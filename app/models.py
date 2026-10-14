@@ -54,6 +54,25 @@ videojuego_genero = Table(
 
 
 # ---------------------------------------------------------------------------
+# Usuarios (autenticación con JWT)
+# ---------------------------------------------------------------------------
+class Usuario(Base):
+    __tablename__ = "usuarios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(50))
+    email: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    es_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    fecha_registro: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now()
+    )
+
+    items: Mapped[list["ItemColeccion"]] = relationship(back_populates="usuario")
+
+
+# ---------------------------------------------------------------------------
 # Desarrolladoras / editoras
 # ---------------------------------------------------------------------------
 class Desarrolladora(Base):
@@ -141,13 +160,17 @@ class ItemColeccion(Base):
     __tablename__ = "colecciones"
     __table_args__ = (
         UniqueConstraint(
+            "usuario_id",
             "videojuego_id",
             "plataforma_id",
-            name="uq_coleccion_juego_plataforma",
+            name="uq_coleccion_usuario_juego_plataforma",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="CASCADE"), index=True
+    )
     videojuego_id: Mapped[int] = mapped_column(
         ForeignKey("videojuegos.id", ondelete="CASCADE"), index=True
     )
@@ -166,3 +189,4 @@ class ItemColeccion(Base):
 
     videojuego: Mapped[Videojuego] = relationship(back_populates="colecciones")
     plataforma: Mapped[Plataforma | None] = relationship()
+    usuario: Mapped[Usuario] = relationship(back_populates="items")

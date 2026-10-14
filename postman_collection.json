@@ -2,16 +2,102 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
     "name": "API Colección de Videojuegos",
-    "description": "Colección completa para probar la API de colección de videojuegos.\n\n1. Videojuegos (CRUD + filtros + paginación)\n2. Plataformas (CRUD)\n3. Géneros (CRUD)\n4. Desarrolladoras (CRUD)\n5. Colección personal (CRUD + favoritos)\n6. Estadísticas\n\nRecuerda arrancar el servidor: `python -m uvicorn app.main:app --port 8000`",
+    "description": "Colección completa para probar la API de colección de videojuegos.\n\n**Autenticación (JWT)**: ejecuta primero «0. Autenticación → Iniciar sesión». El token se guarda solo en la variable `token` y todas las peticiones lo usan (auth Bearer a nivel de colección).\n\n0. Autenticación (registro + login)\n1. Videojuegos (CRUD + filtros + paginación)\n2. Plataformas (CRUD)\n3. Géneros (CRUD)\n4. Desarrolladoras (CRUD)\n5. Colección personal (CRUD + favoritos)\n6. Estadísticas\n\nCuenta de ejemplo: `admin@ludoteca.local` / `admin123`\n\nRecuerda arrancar el servidor: `python -m uvicorn app.main:app --port 8000`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
   },
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8000"
+    },
+    {
+      "key": "token",
+      "value": ""
     }
   ],
   "item": [
+    {
+      "name": "0. Autenticación",
+      "item": [
+        {
+          "name": "Registrar cuenta",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Maic\",\n  \"email\": \"maic@ejemplo.com\",\n  \"password\": \"secreto123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/registro",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "registro"]
+            },
+            "description": "Crea una cuenta y devuelve un token JWT (inicia sesión automáticamente). El email debe ser único."
+          }
+        },
+        {
+          "name": "Iniciar sesión (guarda el token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.access_token) {",
+                  "    pm.collectionVariables.set('token', data.access_token);",
+                  "    console.log('Token JWT guardado en la variable token');",
+                  "} else {",
+                  "    console.error('No se recibió access_token');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@ludoteca.local\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Devuelve el token JWT y lo guarda automáticamente en la variable {{token}} para el resto de peticiones."
+          }
+        },
+        {
+          "name": "Usuario autenticado (yo)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/auth/yo",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "yo"]
+            },
+            "description": "Datos del usuario del token. Sirve para comprobar que el token es válido."
+          }
+        }
+      ]
+    },
     {
       "name": "General",
       "item": [

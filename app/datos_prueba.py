@@ -9,7 +9,7 @@ from datetime import date
 
 from sqlalchemy import func, select
 
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, migrar_colecciones
 from app.models import (
     Desarrolladora,
     Genero,
@@ -17,6 +17,7 @@ from app.models import (
     Plataforma,
     Videojuego,
 )
+from app.seed import asegurar_admin
 
 FALCOM = {
     "nombre": "Nihon Falcom",
@@ -177,6 +178,10 @@ def main() -> None:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        # Asegura el esquema de autenticación y la cuenta admin por defecto.
+        admin = asegurar_admin(db)
+        migrar_colecciones(admin.id)
+
         # --- Género JRPG ---------------------------------------------------
         genero_jrpg = db.scalar(
             select(Genero).where(func.lower(Genero.nombre) == "jrpg")
@@ -257,6 +262,7 @@ def main() -> None:
             plat = plataformas.get(datos["plataforma"])
             repetido = db.scalar(
                 select(ItemColeccion).where(
+                    ItemColeccion.usuario_id == admin.id,
                     ItemColeccion.videojuego_id == juego.id,
                     ItemColeccion.plataforma_id == plat.id,
                 )
@@ -265,6 +271,7 @@ def main() -> None:
                 continue
             db.add(
                 ItemColeccion(
+                    usuario_id=admin.id,
                     videojuego=juego,
                     plataforma=plat,
                     estado=datos["estado"],

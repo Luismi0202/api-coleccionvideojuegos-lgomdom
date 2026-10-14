@@ -9,6 +9,7 @@ from app.models import (
     Genero,
     ItemColeccion,
     Plataforma,
+    Usuario,
     Videojuego,
     videojuego_genero,
     videojuego_plataforma,
@@ -21,6 +22,7 @@ from app.schemas import (
     PlataformaEstadistica,
     ResumenEstadisticas,
 )
+from app.seguridad import usuario_actual
 
 router = APIRouter(prefix="/api/estadisticas", tags=["6. Estadísticas"])
 
@@ -30,8 +32,11 @@ router = APIRouter(prefix="/api/estadisticas", tags=["6. Estadísticas"])
     response_model=ResumenEstadisticas,
     summary="Resumen general",
 )
-def resumen(db: Session = Depends(get_db)):
-    """Totales generales: juegos, plataformas, favoritos, gasto..."""
+def resumen(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
+    """Totales del catálogo y de MI colección."""
     videojuegos = db.scalar(
         select(func.count()).select_from(Videojuego)
     ) or 0
@@ -42,24 +47,27 @@ def resumen(db: Session = Depends(get_db)):
     desarrolladoras = (
         db.scalar(select(func.count()).select_from(Desarrolladora)) or 0
     )
+    mios = ItemColeccion.usuario_id == usuario.id
     ejemplares = db.scalar(
-        select(func.count()).select_from(ItemColeccion)
+        select(func.count()).select_from(ItemColeccion).where(mios)
     ) or 0
     favoritos = (
         db.scalar(
             select(func.count())
             .select_from(ItemColeccion)
-            .where(ItemColeccion.favorito.is_(True))
+            .where(mios, ItemColeccion.favorito.is_(True))
         )
         or 0
     )
     valoracion_media = db.scalar(
         select(func.avg(ItemColeccion.valoracion)).where(
-            ItemColeccion.valoracion.is_not(None)
+            mios, ItemColeccion.valoracion.is_not(None)
         )
     )
     inversion_total = db.scalar(
-        select(func.coalesce(func.sum(ItemColeccion.precio_compra), 0.0))
+        select(func.coalesce(func.sum(ItemColeccion.precio_compra), 0.0)).where(
+            mios
+        )
     )
 
     return ResumenEstadisticas(
@@ -81,7 +89,10 @@ def resumen(db: Session = Depends(get_db)):
     response_model=list[PlataformaEstadistica],
     summary="Juegos y ejemplares por plataforma",
 )
-def por_plataforma(db: Session = Depends(get_db)):
+def por_plataforma(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
     filas = db.execute(
         select(
             Plataforma.nombre,
@@ -97,7 +108,9 @@ def por_plataforma(db: Session = Depends(get_db)):
             videojuego_plataforma.c.plataforma_id == Plataforma.id,
         )
         .outerjoin(
-            ItemColeccion, ItemColeccion.plataforma_id == Plataforma.id
+            ItemColeccion,
+            (ItemColeccion.plataforma_id == Plataforma.id)
+            & (ItemColeccion.usuario_id == usuario.id),
         )
         .group_by(Plataforma.id)
         .order_by(desc("juegos"), Plataforma.nombre)
@@ -147,12 +160,16 @@ def por_genero(db: Session = Depends(get_db)):
     response_model=list[EstadoEstadistica],
     summary="Ejemplares agrupados por estado",
 )
-def por_estado(db: Session = Depends(get_db)):
+def por_estado(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
     filas = db.execute(
         select(
             ItemColeccion.estado,
             func.count(ItemColeccion.id).label("cantidad"),
         )
+        .where(ItemColeccion.usuario_id == usuario.id)
         .group_by(ItemColeccion.estado)
         .order_by(desc("cantidad"))
     ).all()
@@ -168,10 +185,16 @@ def por_estado(db: Session = Depends(get_db)):
     response_model=list[ColeccionSalida],
     summary="Los 10 ejemplares mejor valorados",
 )
-def top_valoraciones(db: Session = Depends(get_db)):
+def top_valoraciones(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
     return db.scalars(
         select(ItemColeccion)
-        .where(ItemColeccion.valoracion.is_not(None))
+        .where(
+            ItemColeccion.usuario_id == usuario.id,
+            ItemColeccion.valoracion.is_not(None),
+        )
         .options(
             selectinload(ItemColeccion.videojuego).selectinload(
                 Videojuego.plataformas

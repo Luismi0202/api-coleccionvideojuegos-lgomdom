@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Genero, videojuego_genero
 from app.schemas import GeneroActualizar, GeneroCrear, GeneroSalida
+from app.seguridad import usuario_actual
 
-router = APIRouter(prefix="/api/generos", tags=["3. Géneros"])
+router = APIRouter(
+    prefix="/api/generos",
+    tags=["3. Géneros"],
+    dependencies=[Depends(usuario_actual)],
+)
 
 
 def _buscar(db: Session, genero_id: int) -> Genero:

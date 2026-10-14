@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import models  # noqa: F401  (registra los modelos en el metadata)
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine, migrar_colecciones
 from app.routers import (
+    auth,
     colecciones,
     desarrolladoras,
     estadisticas,
@@ -16,16 +17,20 @@ from app.routers import (
     plataformas,
     videojuegos,
 )
-from app.seed import seed_si_vacio
+from app.seed import asegurar_admin, asignar_huerfanos, seed_si_vacio
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Crea las tablas y carga datos de ejemplo al arrancar."""
+    """Crea/actualiza las tablas y carga datos de ejemplo al arrancar."""
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        seed_si_vacio(db)
+        admin = asegurar_admin(db)
+        # Migra bases de datos antiguas (colección global -> por usuario).
+        migrar_colecciones(admin.id)
+        seed_si_vacio(db, admin)
+        asignar_huerfanos(db, admin)
     finally:
         db.close()
     yield
@@ -35,16 +40,21 @@ app = FastAPI(
     title="API Colección de Videojuegos",
     description=(
         "Backend REST para gestionar una colección de videojuegos.\n\n"
+        "**Autenticación (JWT):**\n"
+        "0. **Auth** — regístrate en `/api/auth/registro`, inicia sesión en "
+        "`/api/auth/login` y usa el token con el botón **Authorize** "
+        "(esquema `Bearer`).\n\n"
         "**Apartados:**\n"
         "1. **Videojuegos** — CRUD con carátula, descripción, filtros y paginación\n"
         "2. **Plataformas** — CRUD\n"
         "3. **Géneros** — CRUD\n"
         "4. **Desarrolladoras** — CRUD\n"
         "5. **Colección** — tus ejemplares: estado, precio, valoración y favoritos\n"
-        "6. **Estadísticas** — resúmenes y conteos\n\n"
+        "6. **Estadísticas** — resúmenes y conteos de tu colección\n\n"
+        "Todos los endpoints (salvo auth y `/`) requieren el token JWT.\n"
         "CORS abierto: puedes llamarla desde cualquier página web (fetch/axios)."
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
     contact={"name": "API Colección de Videojuegos"},
 )
@@ -58,6 +68,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(videojuegos.router)
 app.include_router(plataformas.router)
 app.include_router(generos.router)
@@ -78,10 +89,15 @@ app.mount(
 def raiz():
     return {
         "mensaje": "API Colección de Videojuegos",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "documentacion_interactiva": "/docs",
         "openapi": "/openapi.json",
         "panel_web": "/panel",
+        "autenticacion": {
+            "registro": "POST /api/auth/registro",
+            "login": "POST /api/auth/login",
+            "usuario_actual": "GET /api/auth/yo",
+        },
         "apartados": {
             "videojuegos": "/api/videojuegos",
             "plataformas": "/api/plataformas",

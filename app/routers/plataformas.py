@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ItemColeccion, Plataforma, videojuego_plataforma
 from app.schemas import PlataformaCrear, PlataformaSalida, PlataformaActualizar
+from app.seguridad import usuario_actual
 
-router = APIRouter(prefix="/api/plataformas", tags=["2. Plataformas"])
+router = APIRouter(
+    prefix="/api/plataformas",
+    tags=["2. Plataformas"],
+    dependencies=[Depends(usuario_actual)],
+)
 
 
 def _buscar(db: Session, plataforma_id: int) -> Plataforma:

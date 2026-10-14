@@ -5,6 +5,29 @@
 // Si se abre el HTML como archivo local, apuntamos al servidor; si se sirve
 // desde FastAPI, usamos rutas relativas (mismo origen, sin problemas de CORS).
 const API = location.protocol === "file:" ? "http://localhost:8000" : "";
+const PAGINA_LOGIN = location.protocol === "file:" ? "login.html" : "/panel/login.html";
+
+const CLAVE_TOKEN = "ludoteca_token";
+const CLAVE_USUARIO = "ludoteca_usuario";
+
+/** Cabecera de autorización con el token JWT guardado (o {} si no hay). */
+function cabeceraAuth() {
+  const token = localStorage.getItem(CLAVE_TOKEN);
+  return token ? { Authorization: "Bearer " + token } : {};
+}
+
+/** Cierra la sesión y manda al login. */
+function cerrarSesion(mensaje) {
+  localStorage.removeItem(CLAVE_TOKEN);
+  localStorage.removeItem(CLAVE_USUARIO);
+  if (mensaje) sessionStorage.setItem("ludoteca_aviso", mensaje);
+  location.replace(PAGINA_LOGIN);
+}
+
+// Si no hay sesión, fuera: directo al login.
+if (!localStorage.getItem(CLAVE_TOKEN)) {
+  location.replace(PAGINA_LOGIN);
+}
 
 const state = {
   plataformas: [],
@@ -34,9 +57,13 @@ function debounce(fn, ms = 350) {
 async function api(ruta, { method = "GET", body } = {}) {
   const res = await fetch(API + ruta, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...cabeceraAuth() },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) {
+    cerrarSesion("Tu sesión ha caducado. Vuelve a entrar.");
+    throw new Error("Sesión caducada");
+  }
   if (!res.ok) {
     let mensaje = `Error ${res.status}`;
     try {
@@ -709,10 +736,49 @@ async function comprobarSalud() {
   }
 }
 
+/* ---------- Sesión: chip de usuario ---------- */
+function pintarUsuario(usuario) {
+  const chip = $("#usuario-chip");
+  chip.hidden = false;
+  const nombre = usuario.nombre || usuario.email || "jugador";
+  $("#usuario-nombre").textContent = nombre;
+  $("#usuario-avatar").textContent = nombre.trim().charAt(0).toUpperCase() || "?";
+}
+
+function usuarioGuardado() {
+  try {
+    return JSON.parse(localStorage.getItem(CLAVE_USUARIO) || "null");
+  } catch (_) {
+    return null;
+  }
+}
+
 /* ---------- Arranque ---------- */
 document.addEventListener("DOMContentLoaded", async () => {
+  // Aviso procedente del login (sesión caducada, etc.).
+  const aviso = sessionStorage.getItem("ludoteca_aviso");
+  if (aviso) {
+    sessionStorage.removeItem("ludoteca_aviso");
+    toast(aviso, "error");
+  }
+
+  // Pinta el chip con los datos guardados y, si no los hay, pídelos a la API.
+  const guardado = usuarioGuardado();
+  if (guardado) pintarUsuario(guardado);
+
+  $("#btn-salir").addEventListener("click", () => {
+    if (confirm("¿Cerrar sesión?")) cerrarSesion();
+  });
+
   conectarEventos();
   comprobarSalud();
   await cargarFiltros();
   cargarCatalogo();
+
+  // Verifica el token y refresca el nombre real del usuario.
+  try {
+    const usuario = await api("/api/auth/yo");
+    localStorage.setItem(CLAVE_USUARIO, JSON.stringify(usuario));
+    pintarUsuario(usuario);
+  } catch (_) { /* api() ya redirige si es 401 */ }
 });

@@ -5,6 +5,9 @@ videojuegos. Pensada para consumirse desde páginas web (fetch/axios) o desde
 **Postman**: cada videojuego devuelve su **carátula**, **descripción**, géneros,
 plataformas y desarrolladora en un solo JSON.
 
+Incluye **autenticación con JSON Web Tokens (JWT)**: se puede crear cuenta,
+iniciar sesión y cada usuario tiene **su propia colección**.
+
 ## Arranque rápido
 
 ```bash
@@ -13,6 +16,7 @@ python -m uvicorn app.main:app --reload --port 8000
 ```
 
 - **Panel web "Ludoteca"** (interfaz gráfica): <http://localhost:8000/panel>
+- Pantalla de **login / registro**: <http://localhost:8000/panel/login.html>
 - Documentación interactiva (Swagger): <http://localhost:8000/docs>
 - Documentación alternativa (ReDoc): <http://localhost:8000/redoc>
 - Índice de la API: <http://localhost:8000/>
@@ -21,6 +25,66 @@ python -m uvicorn app.main:app --reload --port 8000
 > arrancar y se carga con datos de ejemplo: 10 juegos clásicos, 6 plataformas,
 > 8 géneros, 9 desarrolladoras y 6 ejemplares de colección. Si quieres empezar
 > de cero, borra el archivo `.db` y reinicia el servidor.
+
+### Cuenta de ejemplo
+
+Los datos de ejemplo pertenecen a una cuenta creada automáticamente:
+
+| Email | Contraseña | Rol |
+|-------|------------|-----|
+| `admin@ludoteca.local` | `admin123` | admin |
+
+Cualquier persona puede **crear su propia cuenta** desde el panel o con
+`POST /api/auth/registro`; empezará con la colección vacía.
+
+## Autenticación (JWT)
+
+Todos los endpoints de la API salvo `/`, `/api/salud`, `/docs` y los de
+`/api/auth/*` exigen un token **Bearer**. El token se obtiene al registrarse o
+al iniciar sesión.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/api/auth/registro` | Crea la cuenta y devuelve el token (201) |
+| POST | `/api/auth/login` | Inicia sesión y devuelve el token |
+| GET | `/api/auth/yo` | Devuelve el usuario del token (requiere token) |
+
+Ejemplo de registro:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "Maic", "email": "maic@ejemplo.com", "password": "secreto123"}'
+```
+
+Respuesta:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expira_en_segundos": 28800,
+  "usuario": { "id": 2, "nombre": "Maic", "email": "maic@ejemplo.com", "es_admin": false, "activo": true }
+}
+```
+
+Y para usar el token en cualquier petición:
+
+```bash
+curl http://localhost:8000/api/colecciones \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+Detalles:
+
+- El token es un **JWT firmado (HS256)** con validez de **8 horas** (`exp`).
+- Las contraseñas se guardan con **hash bcrypt** (nunca en claro).
+- En Swagger (`/docs`) pulsa **Authorize** y pega el token para probar.
+- La clave de firma se puede cambiar con la variable de entorno
+  `LUDOTECA_SECRET_KEY` (por defecto hay una de desarrollo).
+- La **colección es por usuario**: cada cuenta solo ve y gestiona sus propios
+  ejemplares. El catálogo (juegos, plataformas, géneros, desarrolladoras) es
+  compartido.
 
 ### Datos de prueba de la saga Trails
 
@@ -35,16 +99,17 @@ python -m app.datos_prueba
 Es idempotente: se puede ejecutar tantas veces como quieras sin duplicar nada.
 Con eso la BD queda con **21 juegos** en total.
 
-## Apartados (6 subapartados)
+## Apartados
 
 | # | Apartado | Prefijo | Qué hace |
 |---|----------|---------|----------|
+| 0 | **Autenticación** | `/api/auth` | Registro, login y usuario actual con JWT |
 | 1 | **Videojuegos** | `/api/videojuegos` | CRUD completo + búsqueda, filtros y paginación. Es el corazón de la API: carátula, descripción, año, PEGI, puntuación, plataformas, géneros y desarrolladora |
 | 2 | **Plataformas** | `/api/plataformas` | CRUD de plataformas (PC, PS5, Switch...) |
 | 3 | **Géneros** | `/api/generos` | CRUD de géneros (RPG, Indie, Metroidvania...) |
 | 4 | **Desarrolladoras** | `/api/desarrolladoras` | CRUD de estudios/empresas |
-| 5 | **Colección** | `/api/colecciones` | Tus ejemplares: estado, fecha y precio de compra, valoración, favoritos y notas |
-| 6 | **Estadísticas** | `/api/estadisticas` | Resumen general, conteos por plataforma/género/estado y top valoraciones |
+| 5 | **Colección** | `/api/colecciones` | Tus ejemplares: estado, fecha y precio de compra, valoración, favoritos y notas (por usuario) |
+| 6 | **Estadísticas** | `/api/estadisticas` | Resumen de tu colección, conteos por plataforma/género/estado y top valoraciones |
 
 ## Endpoints
 
@@ -137,8 +202,10 @@ Filtros de `GET /api/colecciones`:
 (`fecha-desc`, `fecha-asc`, `valoracion-desc`, `precio-desc`, `titulo-asc`),
 `pagina`, `por_pagina`.
 
-> Un mismo juego solo puede estar una vez por plataforma en la colección
-> (devuelve `409` si se repite).
+> Cada usuario tiene **su propia colección**: los ejemplares se filtran por el
+> usuario del token. Un mismo juego solo puede estar una vez por plataforma en
+> *tu* colección (devuelve `409` si se repite); otra cuenta puede tenerlo sin
+> problema.
 
 ### 6. Estadísticas
 
@@ -154,8 +221,12 @@ Filtros de `GET /api/colecciones`:
 
 Interfaz gráfica incluida y servida por la propia API en
 **<http://localhost:8000/panel>**. Está hecha con HTML, CSS y JavaScript
-"vanilla" (sin build, sin frameworks) y consume los 6 apartados de la API:
+"vanilla" (sin build, sin frameworks) y consume los 6 apartados de la API.
 
+- **🔐 Login / registro**: al entrar sin sesión te redirige a
+  <http://localhost:8000/panel/login.html>, una pantalla con el mismo estilo
+  del panel (pestañas *Iniciar sesión* / *Crear cuenta*). Al autenticarte se
+  guarda el token y te **redirige al panel**. El botón *Salir* cierra la sesión.
 - **🗂️ Catálogo**: rejilla de carátulas con búsqueda y filtros por género,
   plataforma, desarrolladora y orden; paginación. Cada tarjeta abre una
   **ficha** con carátula grande, descripción, nota, PEGI y plataformas.
@@ -170,7 +241,8 @@ Interfaz gráfica incluida y servida por la propia API en
 
 El panel detecta automáticamente la URL de la API: si se sirve desde FastAPI
 usa rutas relativas y, si abres el HTML como archivo local, apunta a
-`http://localhost:8000`.
+`http://localhost:8000`. Todas las llamadas llevan la cabecera
+`Authorization: Bearer <token>`.
 
 ## Uso desde Postman
 
@@ -178,17 +250,32 @@ usa rutas relativas y, si abres el HTML como archivo local, apunta a
 2. Importa el archivo **`postman_collection.json`** en Postman
    (*Import → File*).
 3. La variable `base_url` ya apunta a `http://localhost:8000`.
-4. Ejecuta las carpetas: General, 1. Videojuegos, 2. Plataformas,
+4. Ejecuta primero **«0. Autenticación → Iniciar sesión»**: guarda el token
+   automáticamente en la variable `token` (auth *Bearer* a nivel de colección),
+   así el resto de peticiones ya van autenticadas.
+5. Ejecuta el resto de carpetas: General, 1. Videojuegos, 2. Plataformas,
    3. Géneros, 4. Desarrolladoras, 5. Colección, 6. Estadísticas.
 
 ## Uso desde una página web
 
-CORS está abierto, así que cualquier frontend puede llamarla:
+CORS está abierto, así que cualquier frontend puede llamarla. Recuerda enviar
+el token en la cabecera `Authorization`:
 
 ```js
-// Listar juegos y pintarlos en tarjetas
-const res = await fetch("http://localhost:8000/api/videojuegos?por_pagina=12");
-const { items } = await res.json();
+// 1) Inicia sesión y guarda el token
+const login = await fetch("http://localhost:8000/api/auth/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "admin@ludoteca.local", password: "admin123" }),
+}).then((r) => r.json());
+
+const token = login.access_token;
+
+// 2) Lista juegos y píntalos en tarjetas
+const { items } = await fetch(
+  "http://localhost:8000/api/videojuegos?por_pagina=12",
+  { headers: { Authorization: "Bearer " + token } }
+).then((r) => r.json());
 
 items.forEach(juego => {
   document.body.insertAdjacentHTML("beforeend", `
@@ -203,9 +290,10 @@ items.forEach(juego => {
 ```
 
 ```js
-// Búsqueda con filtro
+// Búsqueda con filtro (con el mismo token)
 const { items } = await fetch(
-  "http://localhost:8000/api/videojuegos?q=mario&genero=Plataformas"
+  "http://localhost:8000/api/videojuegos?q=mario&genero=Plataformas",
+  { headers: { Authorization: "Bearer " + token } }
 ).then(r => r.json());
 ```
 
@@ -217,31 +305,36 @@ Con el servidor levantado:
 python tests/probar_api.py
 ```
 
-Ejecuta ~45 comprobaciones (CRUD de los 6 apartados, filtros, paginación,
-validaciones y códigos 404/409/422).
+Ejecuta ~55 comprobaciones (CRUD de los 6 apartados, filtros, paginación,
+validaciones, códigos 404/409/422 y **autenticación JWT**: registro, login,
+rechazo sin token e aislamiento de la colección por usuario).
 
 ## Estructura del proyecto
 
 ```
 ├── app/
 │   ├── main.py            # App FastAPI, CORS, lifespan, raíz
-│   ├── database.py        # SQLite + SQLAlchemy (sesiones, PRAGMA FK)
-│   ├── models.py          # Modelos ORM (tablas y relaciones)
+│   ├── database.py        # SQLite + SQLAlchemy (sesiones, PRAGMA FK, migración)
+│   ├── models.py          # Modelos ORM (tablas y relaciones, incl. Usuario)
 │   ├── schemas.py         # Esquemas Pydantic (entrada/salida)
-│   ├── seed.py            # Datos de ejemplo
+│   ├── seguridad.py       # Hash de contraseñas y tokens JWT
+│   ├── seed.py            # Datos de ejemplo + cuenta admin
 │   ├── datos_prueba.py     # Añade la saga Trails (idempotente)
 │   └── routers/
+│       ├── auth.py            # 0. Registro / login / usuario actual (JWT)
 │       ├── videojuegos.py     # 1. CRUD + filtros + paginación
 │       ├── plataformas.py     # 2. CRUD
 │       ├── generos.py         # 3. CRUD
 │       ├── desarrolladoras.py # 4. CRUD
-│       ├── colecciones.py     # 5. Colección personal
+│       ├── colecciones.py     # 5. Colección personal (por usuario)
 │       └── estadisticas.py    # 6. Estadísticas
 ├── tests/probar_api.py     # Batería de pruebas
 ├── frontend/               # Panel web "Ludoteca"
-│   ├── index.html
+│   ├── index.html          # Panel principal
+│   ├── login.html          # Login / registro
 │   ├── styles.css
-│   └── app.js
+│   ├── app.js              # Lógica del panel
+│   └── auth.js             # Lógica de login / registro
 ├── postman_collection.json # Colección lista para importar
 ├── requirements.txt
 └── README.md
@@ -253,5 +346,9 @@ validaciones y códigos 404/409/422).
   (imágenes de relleno). Sustituirlas por portadas reales es solo hacer
   `PUT /api/videojuegos/{id}` con la URL de la imagen que quieras
   (por ejemplo, la de RAWG, IGDB o Wikipedia).
-- Código de estado: `200` OK · `201` creado · `404` no existe ·
-  `409` conflicto/duplicado · `422` datos inválidos.
+- Autenticación: las contraseñas se guardan con **bcrypt** y los tokens se
+  firman con HS256. Define `LUDOTECA_SECRET_KEY` (y opcionalmente
+  `LUDOTECA_TOKEN_MINUTOS`) en el entorno para producción; si no, se usan
+  valores de desarrollo.
+- Código de estado: `200` OK · `201` creado · `401` sin autenticar ·
+  `404` no existe · `409` conflicto/duplicado · `422` datos inválidos.

@@ -1,4 +1,4 @@
-"""Endpoints de la colección personal (ejemplares poseídos)."""
+"""Endpoints de la colección personal (ejemplares poseídos por cada usuario)."""
 import math
 from typing import Literal, Optional
 
@@ -7,11 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import (
-    ItemColeccion,
-    Plataforma,
-    Videojuego,
-)
+from app.models import ItemColeccion, Plataforma, Usuario, Videojuego
 from app.schemas import (
     ColeccionActualizar,
     ColeccionCrear,
@@ -19,8 +15,12 @@ from app.schemas import (
     ColeccionSalida,
     PaginaColeccion,
 )
+from app.seguridad import usuario_actual
 
-router = APIRouter(prefix="/api/colecciones", tags=["5. Colección"])
+router = APIRouter(
+    prefix="/api/colecciones",
+    tags=["5. Colección (por usuario)"],
+)
 
 _CARGA = (
     selectinload(ItemColeccion.videojuego).selectinload(Videojuego.plataformas),
@@ -38,10 +38,14 @@ _ORDEN = {
 }
 
 
-def _buscar(db: Session, item_id: int) -> ItemColeccion:
+def _buscar(db: Session, item_id: int, usuario: Usuario) -> ItemColeccion:
+    """Busca un ejemplar del usuario actual (404 si no existe o es de otro)."""
     item = db.scalar(
         select(ItemColeccion)
-        .where(ItemColeccion.id == item_id)
+        .where(
+            ItemColeccion.id == item_id,
+            ItemColeccion.usuario_id == usuario.id,
+        )
         .options(*_CARGA)
     )
     if item is None:
@@ -55,6 +59,7 @@ def _buscar(db: Session, item_id: int) -> ItemColeccion:
 @router.get("", response_model=PaginaColeccion, summary="Listar mi colección")
 def listar_coleccion(
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
     q: Optional[str] = Query(
         None, min_length=1, max_length=100,
         description="Busca por título o descripción del videojuego",
@@ -76,7 +81,7 @@ def listar_coleccion(
     pagina: int = Query(1, ge=1),
     por_pagina: int = Query(20, ge=1, le=100),
 ):
-    condiciones = []
+    condiciones = [ItemColeccion.usuario_id == usuario.id]
     if q:
         busqueda = f"%{q.strip()}%"
         condiciones.append(
@@ -133,14 +138,22 @@ def listar_coleccion(
 
 @router.get("/{item_id}", response_model=ColeccionSalida,
             summary="Obtener un ejemplar")
-def obtener_item(item_id: int, db: Session = Depends(get_db)):
-    return _buscar(db, item_id)
+def obtener_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
+    return _buscar(db, item_id, usuario)
 
 
 @router.post("", response_model=ColeccionSalida,
              status_code=status.HTTP_201_CREATED,
-             summary="Añadir un videojuego a la colección")
-def crear_item(datos: ColeccionCrear, db: Session = Depends(get_db)):
+             summary="Añadir un videojuego a mi colección")
+def crear_item(
+    datos: ColeccionCrear,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
     vj = db.get(Videojuego, datos.videojuego_id)
     if vj is None:
         raise HTTPException(
@@ -157,9 +170,10 @@ def crear_item(datos: ColeccionCrear, db: Session = Depends(get_db)):
                 detail=f"La plataforma con id {datos.plataforma_id} no existe",
             )
 
-    # Evita duplicados: mismo juego + misma plataforma en la colección
+    # Evita duplicados en MI colección: mismo juego + misma plataforma
     consulta = select(ItemColeccion).where(
-        ItemColeccion.videojuego_id == datos.videojuego_id
+        ItemColeccion.usuario_id == usuario.id,
+        ItemColeccion.videojuego_id == datos.videojuego_id,
     )
     if datos.plataforma_id is None:
         consulta = consulta.where(ItemColeccion.plataforma_id.is_(None))
@@ -170,12 +184,11 @@ def crear_item(datos: ColeccionCrear, db: Session = Depends(get_db)):
     if db.scalar(consulta):
         raise HTTPException(
             status_code=409,
-            detail=(
-                "Ese videojuego ya está en la colección en esa plataforma"
-            ),
+            detail="Ese videojuego ya está en tu colección en esa plataforma",
         )
 
     nuevo = ItemColeccion(
+        usuario_id=usuario.id,
         videojuego=vj,
         plataforma=plataforma,
         estado=datos.estado,
@@ -187,7 +200,7 @@ def crear_item(datos: ColeccionCrear, db: Session = Depends(get_db)):
     )
     db.add(nuevo)
     db.commit()
-    return _buscar(db, nuevo.id)
+    return _buscar(db, nuevo.id, usuario)
 
 
 @router.put("/{item_id}", response_model=ColeccionSalida,
@@ -196,8 +209,9 @@ def actualizar_item(
     item_id: int,
     datos: ColeccionActualizar,
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ):
-    item = _buscar(db, item_id)
+    item = _buscar(db, item_id, usuario)
 
     cambios = datos.model_dump(exclude_unset=True)
     plataforma_id = cambios.pop("plataforma_id", "sin_cambios")
@@ -217,7 +231,7 @@ def actualizar_item(
         setattr(item, campo, valor)
 
     db.commit()
-    return _buscar(db, item_id)
+    return _buscar(db, item_id, usuario)
 
 
 @router.patch("/{item_id}/favorito", response_model=ColeccionSalida,
@@ -226,16 +240,21 @@ def cambiar_favorito(
     item_id: int,
     datos: ColeccionFavorito,
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
 ):
-    item = _buscar(db, item_id)
+    item = _buscar(db, item_id, usuario)
     item.favorito = datos.favorito
     db.commit()
-    return _buscar(db, item_id)
+    return _buscar(db, item_id, usuario)
 
 
-@router.delete("/{item_id}", summary="Eliminar un ejemplar de la colección")
-def eliminar_item(item_id: int, db: Session = Depends(get_db)):
-    item = _buscar(db, item_id)
+@router.delete("/{item_id}", summary="Eliminar un ejemplar de mi colección")
+def eliminar_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_actual),
+):
+    item = _buscar(db, item_id, usuario)
     db.delete(item)
     db.commit()
     return {"mensaje": "Ejemplar eliminado de la colección", "id": item_id}

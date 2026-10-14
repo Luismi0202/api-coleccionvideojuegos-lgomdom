@@ -6,6 +6,51 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ---------------------------------------------------------------------------
+# Autenticación
+# ---------------------------------------------------------------------------
+class UsuarioCrear(BaseModel):
+    nombre: str = Field(..., min_length=2, max_length=50, examples=["Maic"])
+    email: str = Field(..., max_length=150, examples=["maic@ejemplo.com"])
+    password: str = Field(..., min_length=6, max_length=72, examples=["secreto123"])
+
+    @field_validator("email")
+    @classmethod
+    def _email_valido(cls, v: str) -> str:
+        v = v.strip().lower()
+        if "@" not in v or "." not in v.split("@")[-1] or v.startswith("@"):
+            raise ValueError("email no válido")
+        return v
+
+    @field_validator("nombre")
+    @classmethod
+    def _nombre_limpio(cls, v: str) -> str:
+        return v.strip()
+
+
+class UsuarioLogin(BaseModel):
+    email: str = Field(..., examples=["maic@ejemplo.com"])
+    password: str = Field(..., examples=["secreto123"])
+
+
+class UsuarioSalida(BaseModel):
+    id: int
+    nombre: str
+    email: str
+    es_admin: bool
+    activo: bool
+    fecha_registro: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TokenSalida(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expira_en_segundos: int = Field(..., description="Validez del token")
+    usuario: UsuarioSalida
+
+
+# ---------------------------------------------------------------------------
 # Estados posibles de un ejemplar de la colección
 # ---------------------------------------------------------------------------
 EstadoColeccion = Literal[

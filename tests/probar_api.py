@@ -1,4 +1,8 @@
-"""Pruebas rápidas de la API (se ejecutan contra el servidor en :8000)."""
+"""Pruebas rápidas de la API (se ejecutan contra el servidor en :8000).
+
+Incluye pruebas de autenticación JWT: registro, login, aislamiento de la
+colección por usuario y rechazo de peticiones sin token.
+"""
 import json
 import sys
 import urllib.error
@@ -8,18 +12,33 @@ import urllib.request
 BASE = "http://localhost:8000"
 fallos = []
 
+# Token global que se rellena al iniciar sesión (admin) y usan las peticiones.
+TOKEN = None
 
-def req(metodo, ruta, cuerpo=None):
+
+def req(metodo, ruta, cuerpo=None, token="auto"):
+    """Hace una petición.
+
+    ``token="auto"`` usa el token global; ``token=None`` va sin cabecera
+    (para probar el 401); cualquier otro valor se usa como token literal.
+    """
+    token_efectivo = TOKEN if token == "auto" else token
+    cabeceras = {"Content-Type": "application/json"}
+    if token_efectivo:
+        cabeceras["Authorization"] = "Bearer " + token_efectivo
+
     datos = None if cuerpo is None else json.dumps(cuerpo).encode("utf-8")
-    r = urllib.request.Request(
-        BASE + ruta, data=datos, method=metodo,
-        headers={"Content-Type": "application/json"},
-    )
+    r = urllib.request.Request(BASE + ruta, data=datos, method=metodo,
+                               headers=cabeceras)
     try:
         with urllib.request.urlopen(r, timeout=30) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read().decode("utf-8"))
+        cuerpo_error = e.read().decode("utf-8")
+        try:
+            return e.code, json.loads(cuerpo_error)
+        except json.JSONDecodeError:
+            return e.code, {"detail": cuerpo_error}
 
 
 def comprobar(nombre, condicion, extra=""):
@@ -35,6 +54,60 @@ comprobar("GET / responde 200", codigo == 200)
 
 codigo, datos = req("GET", "/api/salud")
 comprobar("GET /api/salud ok", codigo == 200 and datos["estado"] == "ok")
+
+# ---- Autenticación (JWT) --------------------------------------------------
+codigo, datos = req("GET", "/api/videojuegos", token=None)
+comprobar("Sin token -> 401", codigo == 401, f"codigo={codigo}")
+
+codigo, datos = req("GET", "/api/videojuegos", token="token.invalido.xxx")
+comprobar("Token inválido -> 401", codigo == 401, f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/auth/login",
+                    {"email": "admin@ludoteca.local", "password": "malo"},
+                    token=None)
+comprobar("Login con contraseña incorrecta -> 401", codigo == 401,
+          f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/auth/login",
+                    {"email": "admin@ludoteca.local", "password": "admin123"},
+                    token=None)
+comprobar("Login admin -> 200 y token", codigo == 200 and "access_token" in datos,
+          f"codigo={codigo}")
+TOKEN = datos.get("access_token")
+
+codigo, datos = req("GET", "/api/auth/yo")
+comprobar("GET /api/auth/yo devuelve el usuario", codigo == 200
+          and datos.get("email") == "admin@ludoteca.local")
+
+codigo, datos = req("POST", "/api/auth/registro",
+                    {"nombre": "Copion", "email": "admin@ludoteca.local",
+                     "password": "secreto123"}, token=None)
+comprobar("Registro con email ya usado -> 409", codigo == 409, f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/auth/registro",
+                    {"nombre": "X", "email": "no-es-email", "password": "secreto123"},
+                    token=None)
+comprobar("Registro con email no válido -> 422", codigo == 422, f"codigo={codigo}")
+
+# Usuario de pruebas fijo: se registra la primera vez y luego se inicia sesión.
+EMAIL_PRUEBA = "tester@ludoteca.local"
+CLAVE_PRUEBA = "secreto123"
+codigo, datos = req("POST", "/api/auth/registro",
+                    {"nombre": "Tester", "email": EMAIL_PRUEBA,
+                     "password": CLAVE_PRUEBA}, token=None)
+if codigo == 409:
+    codigo, datos = req("POST", "/api/auth/login",
+                        {"email": EMAIL_PRUEBA, "password": CLAVE_PRUEBA},
+                        token=None)
+    comprobar("Usuario de pruebas listo (login)", codigo == 200, f"codigo={codigo}")
+else:
+    comprobar("Usuario de pruebas creado (registro 201)", codigo == 201,
+              f"codigo={codigo}")
+TOKEN_PRUEBA = datos.get("access_token")
+
+codigo, datos = req("GET", "/api/colecciones", token=TOKEN_PRUEBA)
+comprobar("Colección del usuario nuevo está vacía (aislamiento)", codigo == 200
+          and datos["total"] == 0, f"total={datos.get('total')}")
 
 # ---- Listados -------------------------------------------------------------
 codigo, datos = req("GET", "/api/videojuegos")

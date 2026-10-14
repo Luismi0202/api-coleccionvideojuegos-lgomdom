@@ -91,6 +91,9 @@ a { color: var(--cyan); }
 }
 .brand-texto p { margin: 0; font-size: 12px; color: var(--suave); }
 
+/* Botón "Nuevo juego" + chip de usuario */
+.topbar-acciones { display: flex; align-items: center; gap: 16px; }
+
 .tabs { display: flex; gap: 6px; background: rgba(255,255,255,.04);
         padding: 5px; border-radius: 999px; border: 1px solid var(--borde); }
 .tab {
@@ -161,7 +164,7 @@ main { padding: clamp(18px, 4vw, 40px); max-width: 1500px; margin: 0 auto; }
 .campo-buscar { flex: 1 1 260px; }
 .campo .icono { position: absolute; left: 14px; opacity: .7; pointer-events: none; }
 input[type="search"], input[type="text"], input[type="number"], input[type="url"],
-input[type="date"], select, textarea {
+input[type="email"], input[type="password"], input[type="date"], select, textarea {
   font-family: inherit; font-size: 14px; color: var(--texto);
   background: rgba(10, 14, 30, 0.75);
   border: 1px solid var(--borde); border-radius: 12px;
@@ -174,6 +177,17 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--violeta); box-shadow: 0 0 0 3px rgba(124, 92, 255, .22);
 }
 option { background: #0d1226; color: var(--texto); }
+
+/* Que el autocompletado del navegador no pinte los campos de blanco */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #0d1226 inset;
+  box-shadow: 0 0 0 1000px #0d1226 inset;
+  -webkit-text-fill-color: var(--texto);
+  caret-color: var(--texto);
+  transition: background-color 9999s ease-in-out 0s;
+}
+input:autofill { box-shadow: 0 0 0 1000px #0d1226 inset; }
 
 /* Interruptor */
 .interruptor { display: flex; align-items: center; gap: 10px; cursor: pointer;
@@ -444,4 +458,123 @@ textarea { resize: vertical; min-height: 96px; }
 @media (max-width: 520px) {
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .barra { grid-template-columns: 96px 1fr 36px; }
+}
+
+/* ============================================================
+   Autenticación (login / registro)
+   ============================================================ */
+.auth-body { display: grid; place-items: center; }
+.auth-envoltorio {
+  width: 100%; max-width: 1040px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 40px);
+  display: flex; flex-direction: column; gap: 16px; align-items: center;
+}
+
+.auth-card {
+  width: 100%;
+  display: grid; grid-template-columns: 1.05fr 1fr;
+  overflow: hidden; box-shadow: var(--sombra);
+}
+
+/* --- Lado decorativo --- */
+.auth-lado {
+  position: relative; overflow: hidden;
+  padding: 44px 38px;
+  display: flex; flex-direction: column;
+  background:
+    linear-gradient(150deg, rgba(124,92,255,.35), rgba(34,211,238,.14) 55%, rgba(255,94,168,.16)),
+    rgba(10, 14, 30, 0.55);
+  border-right: 1px solid var(--borde);
+}
+.auth-lado-brillo {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(420px 300px at 85% 12%, rgba(34,211,238,.30), transparent 70%),
+    radial-gradient(360px 300px at 8% 90%, rgba(124,92,255,.35), transparent 70%);
+}
+.auth-lado-contenido { position: relative; z-index: 1; }
+.auth-logo {
+  font-size: 46px; line-height: 1; display: inline-block;
+  filter: drop-shadow(0 0 16px rgba(124,92,255,.8));
+  animation: girar 6s ease-in-out infinite;
+}
+.auth-marca {
+  margin: 14px 0 6px; font-size: 34px; font-weight: 800; letter-spacing: .5px;
+  background: linear-gradient(90deg, #c7bdff, var(--cyan));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.auth-claim { margin: 0 0 26px; color: var(--suave); line-height: 1.55; max-width: 34ch; }
+.auth-puntos { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.auth-puntos li { display: flex; align-items: center; gap: 12px; font-size: 14.5px; color: #d7ddff; }
+.auth-puntos span {
+  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+  background: rgba(255,255,255,.08); border: 1px solid var(--borde); font-size: 16px;
+}
+
+/* --- Lado del formulario --- */
+.auth-form-lado { padding: 40px clamp(24px, 4vw, 42px); }
+.auth-tabs {
+  display: inline-flex; gap: 5px; padding: 5px; margin-bottom: 26px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--borde); border-radius: 999px;
+}
+.auth-tab {
+  border: none; background: transparent; color: var(--suave); cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 600; padding: 9px 18px; border-radius: 999px;
+  transition: all .22s ease;
+}
+.auth-tab:hover { color: var(--texto); }
+.auth-tab.activo {
+  color: #fff; background: linear-gradient(135deg, var(--violeta), #4f46e5);
+  box-shadow: 0 6px 18px rgba(124, 92, 255, .45);
+}
+.auth-form h2 { margin: 0 0 4px; font-size: 22px; }
+.auth-sub { margin: 0 0 22px; color: var(--suave); font-size: 14px; }
+.auth-campo { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+.auth-campo > span:first-child {
+  font-size: 12.5px; font-weight: 600; color: var(--suave);
+  text-transform: uppercase; letter-spacing: .6px;
+}
+.auth-input-con-pico { position: relative; display: block; }
+.auth-input-con-pico input { padding-right: 46px; }
+.auth-ojo {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; cursor: pointer; font-size: 16px;
+  opacity: .6; padding: 6px; border-radius: 8px; transition: opacity .2s, background .2s;
+}
+.auth-ojo:hover { opacity: 1; background: rgba(255,255,255,.08); }
+.auth-enviar { width: 100%; margin-top: 6px; padding: 13px 18px; font-size: 15px; }
+.auth-pie-texto { margin: 18px 0 0; font-size: 13.5px; color: var(--suave); text-align: center; }
+.auth-pie-texto a { color: var(--cyan); font-weight: 600; text-decoration: none; }
+.auth-pie-texto a:hover { text-decoration: underline; }
+.auth-aviso {
+  margin: 18px 0 0; padding: 12px 14px; border-radius: 12px; font-size: 13.5px;
+  background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.35); color: #ffc9c9;
+}
+.auth-volver { color: var(--suave); font-size: 13px; margin: 4px 0 0; }
+.auth-volver a { color: var(--cyan); }
+
+/* --- Chip de usuario en el panel --- */
+.usuario-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px 6px 12px; border-radius: 999px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--borde);
+}
+.usuario-avatar {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: 13px; color: #0a0f20;
+  background: linear-gradient(135deg, var(--violeta), var(--cyan));
+}
+.usuario-nombre { font-size: 13.5px; font-weight: 600; max-width: 130px;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usuario-salir {
+  border: 1px solid var(--borde); background: transparent; color: var(--suave);
+  font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  padding: 6px 12px; border-radius: 999px; transition: all .2s;
+}
+.usuario-salir:hover { color: var(--rojo); border-color: rgba(248,113,113,.45); }
+
+@media (max-width: 780px) {
+  .auth-card { grid-template-columns: 1fr; }
+  .auth-lado { border-right: none; border-bottom: 1px solid var(--borde); padding: 32px 28px; }
+  .auth-puntos { display: none; }
+  .usuario-nombre { display: none; }
 }

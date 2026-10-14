@@ -18,8 +18,13 @@ from app.schemas import (
     VideojuegoCrear,
     VideojuegoSalida,
 )
+from app.seguridad import usuario_actual
 
-router = APIRouter(prefix="/api/videojuegos", tags=["1. Videojuegos"])
+router = APIRouter(
+    prefix="/api/videojuegos",
+    tags=["1. Videojuegos"],
+    dependencies=[Depends(usuario_actual)],
+)
 
 _CARGA = (
     selectinload(Videojuego.plataformas),

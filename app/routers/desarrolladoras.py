@@ -10,8 +10,13 @@ from app.schemas import (
     DesarrolladoraCrear,
     DesarrolladoraSalida,
 )
+from app.seguridad import usuario_actual
 
-router = APIRouter(prefix="/api/desarrolladoras", tags=["4. Desarrolladoras"])
+router = APIRouter(
+    prefix="/api/desarrolladoras",
+    tags=["4. Desarrolladoras"],
+    dependencies=[Depends(usuario_actual)],
+)
 
 
 def _buscar(db: Session, desarrolladora_id: int) -> Desarrolladora:

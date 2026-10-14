@@ -1,5 +1,5 @@
 """Datos de ejemplo con los que se arranca la API si la BD está vacía."""
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -7,8 +7,15 @@ from app.models import (
     Genero,
     ItemColeccion,
     Plataforma,
+    Usuario,
     Videojuego,
 )
+from app.seguridad import hash_password
+
+# Cuenta por defecto que recibe los datos de ejemplo (cámbiala en producción).
+ADMIN_NOMBRE = "admin"
+ADMIN_EMAIL = "admin@ludoteca.local"
+ADMIN_PASSWORD = "admin123"
 
 PLATAFORMAS = [
     {"nombre": "PC", "fabricante": "Varios", "anio_lanzamiento": 1971},
@@ -259,12 +266,44 @@ COLECCION = [
 ]
 
 
-def seed_si_vacio(db: Session) -> None:
+def asegurar_admin(db: Session) -> Usuario:
+    """Devuelve (creándola si hace falta) la cuenta admin por defecto.
+
+    Es la propietaria de los datos de ejemplo y de los ejemplares antiguos.
+    """
+    admin = db.scalar(select(Usuario).where(Usuario.email == ADMIN_EMAIL))
+    if admin is None:
+        admin = Usuario(
+            nombre=ADMIN_NOMBRE,
+            email=ADMIN_EMAIL,
+            password_hash=hash_password(ADMIN_PASSWORD),
+            es_admin=True,
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+    return admin
+
+
+def asignar_huerfanos(db: Session, admin: Usuario) -> int:
+    """Asigna a la cuenta admin los ejemplares que no tienen dueño."""
+    resultado = db.execute(
+        update(ItemColeccion)
+        .where(ItemColeccion.usuario_id.is_(None))
+        .values(usuario_id=admin.id)
+    )
+    db.commit()
+    return resultado.rowcount or 0
+
+
+def seed_si_vacio(db: Session, admin: Usuario | None = None) -> None:
     """Carga los datos de ejemplo solo si la tabla de videojuegos está vacía."""
     hay_datos = db.scalar(select(func.count()).select_from(Videojuego))
     if hay_datos:
         return
 
+    if admin is None:
+        admin = asegurar_admin(db)
     plataformas = {}
     for datos in PLATAFORMAS:
         obj = Plataforma(**datos)
@@ -311,6 +350,7 @@ def seed_si_vacio(db: Session) -> None:
     for datos in COLECCION:
         db.add(
             ItemColeccion(
+                usuario_id=admin.id,
                 videojuego=videojuegos[datos["titulo"]],
                 plataforma=plataformas[datos["plataforma"]],
                 estado=datos["estado"],
