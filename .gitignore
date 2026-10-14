@@ -1,0 +1,11 @@
+# Base de datos local
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Entornos
+.env
