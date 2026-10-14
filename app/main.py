@@ -1,8 +1,10 @@
 """Punto de entrada de la API Colección de Videojuegos."""
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app import models  # noqa: F401  (registra los modelos en el metadata)
 from app.database import Base, SessionLocal, engine
@@ -63,6 +65,14 @@ app.include_router(desarrolladoras.router)
 app.include_router(colecciones.router)
 app.include_router(estadisticas.router)
 
+# Panel web "Ludoteca" servido por la propia API: http://localhost:8000/panel
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+app.mount(
+    "/panel",
+    StaticFiles(directory=str(FRONTEND_DIR), html=True),
+    name="panel",
+)
+
 
 @app.get("/", tags=["General"], summary="Información de la API")
 def raiz():
@@ -71,6 +81,7 @@ def raiz():
         "version": "1.0.0",
         "documentacion_interactiva": "/docs",
         "openapi": "/openapi.json",
+        "panel_web": "/panel",
         "apartados": {
             "videojuegos": "/api/videojuegos",
             "plataformas": "/api/plataformas",

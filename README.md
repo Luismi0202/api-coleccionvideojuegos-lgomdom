@@ -12,6 +12,7 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
+- **Panel web "Ludoteca"** (interfaz gráfica): <http://localhost:8000/panel>
 - Documentación interactiva (Swagger): <http://localhost:8000/docs>
 - Documentación alternativa (ReDoc): <http://localhost:8000/redoc>
 - Índice de la API: <http://localhost:8000/>
@@ -149,6 +150,28 @@ Filtros de `GET /api/colecciones`:
 | GET | `/api/estadisticas/por-estado` | Ejemplares agrupados por estado |
 | GET | `/api/estadisticas/top-valoraciones` | 10 ejemplares mejor valorados |
 
+## Panel web "Ludoteca"
+
+Interfaz gráfica incluida y servida por la propia API en
+**<http://localhost:8000/panel>**. Está hecha con HTML, CSS y JavaScript
+"vanilla" (sin build, sin frameworks) y consume los 6 apartados de la API:
+
+- **🗂️ Catálogo**: rejilla de carátulas con búsqueda y filtros por género,
+  plataforma, desarrolladora y orden; paginación. Cada tarjeta abre una
+  **ficha** con carátula grande, descripción, nota, PEGI y plataformas.
+- **📚 Mi colección**: tus ejemplares con su estado, valoración y precio.
+  Puedes marcarlos como favoritos, cambiar el estado/valoración al vuelo
+  (PUT) o quitarlos (DELETE).
+- **📊 Estadísticas**: KPIs (juegos, favoritos, nota media, inversión...) y
+  gráficas de barras por género, plataforma y estado, además del top de
+  mejores valoraciones.
+- **CRUD desde la interfaz**: botón "＋ Nuevo juego", editar y eliminar
+  juegos, y "Añadir a mi colección" desde cada ficha.
+
+El panel detecta automáticamente la URL de la API: si se sirve desde FastAPI
+usa rutas relativas y, si abres el HTML como archivo local, apunta a
+`http://localhost:8000`.
+
 ## Uso desde Postman
 
 1. Arranca el servidor (`python -m uvicorn app.main:app --port 8000`).
@@ -215,6 +238,10 @@ validaciones y códigos 404/409/422).
 │       ├── colecciones.py     # 5. Colección personal
 │       └── estadisticas.py    # 6. Estadísticas
 ├── tests/probar_api.py     # Batería de pruebas
+├── frontend/               # Panel web "Ludoteca"
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
 ├── postman_collection.json # Colección lista para importar
 ├── requirements.txt
 └── README.md
