@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import models  # noqa: F401  (registra los modelos en el metadata)
-from app.database import Base, SessionLocal, engine, migrar_colecciones
+from app.database import Base, SessionLocal, engine, migrar_colecciones, migrar_usuarios
 from app.routers import (
     auth,
     colecciones,
@@ -24,6 +24,8 @@ from app.seed import asegurar_admin, asignar_huerfanos, seed_si_vacio
 async def lifespan(app: FastAPI):
     """Crea/actualiza las tablas y carga datos de ejemplo al arrancar."""
     Base.metadata.create_all(bind=engine)
+    # Adapta bases de datos anteriores (booleano es_admin -> columna rol).
+    migrar_usuarios()
     db = SessionLocal()
     try:
         admin = asegurar_admin(db)
@@ -44,13 +46,18 @@ app = FastAPI(
         "0. **Auth** — regístrate en `/api/auth/registro`, inicia sesión en "
         "`/api/auth/login` y usa el token con el botón **Authorize** "
         "(esquema `Bearer`).\n\n"
+        "**Roles:** cada cuenta tiene un rol. `usuario` (por defecto) solo "
+        "gestiona su propia colección; `gestor` además edita el catálogo "
+        "(videojuegos, plataformas, géneros y desarrolladoras); `admin` "
+        "además administra las cuentas y sus roles.\n\n"
         "**Apartados:**\n"
         "1. **Videojuegos** — CRUD con carátula, descripción, filtros y paginación\n"
         "2. **Plataformas** — CRUD\n"
         "3. **Géneros** — CRUD\n"
         "4. **Desarrolladoras** — CRUD\n"
         "5. **Colección** — tus ejemplares: estado, precio, valoración y favoritos\n"
-        "6. **Estadísticas** — resúmenes y conteos de tu colección\n\n"
+        "6. **Estadísticas** — resúmenes y conteos de tu colección\n"
+        "7. **Usuarios** — listar, buscar y cambiar roles (solo admin)\n\n"
         "Todos los endpoints (salvo auth y `/`) requieren el token JWT.\n"
         "CORS abierto: puedes llamarla desde cualquier página web (fetch/axios)."
     ),
@@ -69,6 +76,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(auth.router_usuarios)
 app.include_router(videojuegos.router)
 app.include_router(plataformas.router)
 app.include_router(generos.router)
@@ -105,6 +113,7 @@ def raiz():
             "desarrolladoras": "/api/desarrolladoras",
             "colecciones": "/api/colecciones",
             "estadisticas": "/api/estadisticas/resumen",
+            "usuarios": "/api/usuarios",
         },
     }
 

@@ -5,8 +5,10 @@ videojuegos. Pensada para consumirse desde páginas web (fetch/axios) o desde
 **Postman**: cada videojuego devuelve su **carátula**, **descripción**, géneros,
 plataformas y desarrolladora en un solo JSON.
 
-Incluye **autenticación con JSON Web Tokens (JWT)**: se puede crear cuenta,
-iniciar sesión y cada usuario tiene **su propia colección**.
+Incluye **autenticación con JSON Web Tokens (JWT)** y **roles**: se puede crear
+cuenta, iniciar sesión y cada usuario tiene **su propia colección**. Hay tres
+roles: **usuario** (por defecto), **gestor** (edita el catálogo) y **admin**
+(además administra las cuentas).
 
 ## Arranque rápido
 
@@ -35,7 +37,20 @@ Los datos de ejemplo pertenecen a una cuenta creada automáticamente:
 | `admin@ludoteca.local` | `admin123` | admin |
 
 Cualquier persona puede **crear su propia cuenta** desde el panel o con
-`POST /api/auth/registro`; empezará con la colección vacía.
+`POST /api/auth/registro`; empezará con el rol **usuario** y la colección vacía.
+
+## Roles y permisos
+
+| Rol | Colección propia | Catálogo (juegos, plataformas, géneros, desarrolladoras) | Usuarios |
+|-----|:---:|:---:|:---:|
+| `usuario` | Gestionar la suya | Solo lectura | — |
+| `gestor` | Gestionar la suya | Crear, editar y borrar | — |
+| `admin` | Gestionar la suya | Crear, editar y borrar | Listar, buscar y cambiar roles |
+
+- El rol se asigna al registrarse (`usuario`) y solo un **admin** puede
+  cambiarlo (`PATCH /api/usuarios/{id}/rol`).
+- Escribir en el catálogo (POST/PUT/DELETE) exige rol `gestor` o `admin`
+  (si no, `403 Forbidden`).
 
 ## Autenticación (JWT)
 
@@ -64,7 +79,7 @@ Respuesta:
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "bearer",
   "expira_en_segundos": 28800,
-  "usuario": { "id": 2, "nombre": "Maic", "email": "maic@ejemplo.com", "es_admin": false, "activo": true }
+  "usuario": { "id": 2, "nombre": "Maic", "email": "maic@ejemplo.com", "rol": "usuario", "es_admin": false, "activo": true }
 }
 ```
 
@@ -110,6 +125,7 @@ Con eso la BD queda con **21 juegos** en total.
 | 4 | **Desarrolladoras** | `/api/desarrolladoras` | CRUD de estudios/empresas |
 | 5 | **Colección** | `/api/colecciones` | Tus ejemplares: estado, fecha y precio de compra, valoración, favoritos y notas (por usuario) |
 | 6 | **Estadísticas** | `/api/estadisticas` | Resumen de tu colección, conteos por plataforma/género/estado y top valoraciones |
+| 7 | **Usuarios** | `/api/usuarios` | Listar, buscar y cambiar el rol de las cuentas (**solo admin**) |
 
 ## Endpoints
 
@@ -217,6 +233,17 @@ Filtros de `GET /api/colecciones`:
 | GET | `/api/estadisticas/por-estado` | Ejemplares agrupados por estado |
 | GET | `/api/estadisticas/top-valoraciones` | 10 ejemplares mejor valorados |
 
+### 7. Usuarios
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/usuarios` | Listado paginado con búsqueda (`q`) y filtro por `rol` (**admin**) |
+| GET | `/api/usuarios/{id}` | Detalle de una cuenta (**admin**) |
+| PATCH | `/api/usuarios/{id}/rol` | Cambiar el rol: `usuario`, `gestor` o `admin` (**admin**) |
+
+Reglas: un admin no puede cambiarse su **propio** rol (`400`) ni quitar el
+**último admin** que queda (`409`).
+
 ## Panel web "Ludoteca"
 
 Interfaz gráfica incluida y servida por la propia API en
@@ -236,8 +263,11 @@ Interfaz gráfica incluida y servida por la propia API en
 - **📊 Estadísticas**: KPIs (juegos, favoritos, nota media, inversión...) y
   gráficas de barras por género, plataforma y estado, además del top de
   mejores valoraciones.
-- **CRUD desde la interfaz**: botón "＋ Nuevo juego", editar y eliminar
-  juegos, y "Añadir a mi colección" desde cada ficha.
+- **CRUD desde la interfaz**: botón "＋ Nuevo juego" y editar/eliminar juegos
+  (solo **gestor/admin**), y "Añadir a mi colección" desde cada ficha.
+- **👥 Usuarios** (solo **admin**): pestaña con buscador (lupa) por nombre,
+  email o rol y un selector para asignar el rol de cada cuenta. En la cabecera
+  se muestra el rol del usuario conectado.
 
 El panel detecta automáticamente la URL de la API: si se sirve desde FastAPI
 usa rutas relativas y, si abres el HTML como archivo local, apunta a
@@ -254,7 +284,8 @@ usa rutas relativas y, si abres el HTML como archivo local, apunta a
    automáticamente en la variable `token` (auth *Bearer* a nivel de colección),
    así el resto de peticiones ya van autenticadas.
 5. Ejecuta el resto de carpetas: General, 1. Videojuegos, 2. Plataformas,
-   3. Géneros, 4. Desarrolladoras, 5. Colección, 6. Estadísticas.
+   3. Géneros, 4. Desarrolladoras, 5. Colección, 6. Estadísticas y
+   7. Usuarios (solo funciona con el token del admin).
 
 ## Uso desde una página web
 
@@ -305,9 +336,11 @@ Con el servidor levantado:
 python tests/probar_api.py
 ```
 
-Ejecuta ~55 comprobaciones (CRUD de los 6 apartados, filtros, paginación,
+Ejecuta ~66 comprobaciones (CRUD de los 7 apartados, filtros, paginación,
 validaciones, códigos 404/409/422 y **autenticación JWT**: registro, login,
-rechazo sin token e aislamiento de la colección por usuario).
+rechazo sin token, aislamiento de la colección por usuario y **roles**: un
+`usuario` no puede escribir en el catálogo (`403`), un `gestor` sí, y solo un
+`admin` administra las cuentas).
 
 ## Estructura del proyecto
 
@@ -321,7 +354,7 @@ rechazo sin token e aislamiento de la colección por usuario).
 │   ├── seed.py            # Datos de ejemplo + cuenta admin
 │   ├── datos_prueba.py     # Añade la saga Trails (idempotente)
 │   └── routers/
-│       ├── auth.py            # 0. Registro / login / usuario actual (JWT)
+│       ├── auth.py            # 0. Registro / login / usuario actual (JWT) + 7. Usuarios (roles)
 │       ├── videojuegos.py     # 1. CRUD + filtros + paginación
 │       ├── plataformas.py     # 2. CRUD
 │       ├── generos.py         # 3. CRUD
@@ -351,4 +384,5 @@ rechazo sin token e aislamiento de la colección por usuario).
   `LUDOTECA_TOKEN_MINUTOS`) en el entorno para producción; si no, se usan
   valores de desarrollo.
 - Código de estado: `200` OK · `201` creado · `401` sin autenticar ·
-  `404` no existe · `409` conflicto/duplicado · `422` datos inválidos.
+  `403` sin permisos (rol insuficiente) · `404` no existe ·
+  `409` conflicto/duplicado · `422` datos inválidos.

@@ -285,6 +285,60 @@ comprobar("DELETE videojuego 200", codigo == 200)
 codigo, datos = req("GET", f"/api/videojuegos/{id_vj}")
 comprobar("Detalle tras borrar 404", codigo == 404)
 
+# ---- Roles y administración de usuarios ----------------------------------
+codigo, datos = req("GET", "/api/auth/yo")
+comprobar("El admin tiene rol 'admin'", codigo == 200 and datos.get("rol") == "admin",
+          f"rol={datos.get('rol')}")
+comprobar("La respuesta de usuario incluye rol y es_admin",
+          "rol" in datos and "es_admin" in datos)
+id_admin = datos.get("id")
+
+# Un usuario normal no puede escribir en el catálogo ni listar cuentas.
+codigo, datos = req("POST", "/api/plataformas",
+                    {"nombre": "Pippin", "fabricante": "Apple"},
+                    token=TOKEN_PRUEBA)
+comprobar("Usuario normal no puede crear plataforma -> 403", codigo == 403,
+          f"codigo={codigo}")
+
+codigo, datos = req("GET", "/api/usuarios", token=TOKEN_PRUEBA)
+comprobar("Usuario normal no puede listar usuarios -> 403", codigo == 403,
+          f"codigo={codigo}")
+
+# El admin sí administra usuarios.
+codigo, datos = req("GET", "/api/usuarios")
+comprobar("Admin lista usuarios", codigo == 200 and datos["total"] >= 2,
+          f"total={datos.get('total')}")
+
+codigo, datos = req("GET", f"/api/usuarios?q={EMAIL_PRUEBA}")
+comprobar("Admin busca usuario por email", codigo == 200 and datos["total"] == 1
+          and datos["items"][0]["email"] == EMAIL_PRUEBA,
+          f"total={datos.get('total')}")
+id_tester = datos["items"][0]["id"] if datos.get("items") else None
+
+# El admin no puede cambiarse su propio rol.
+codigo, datos = req("PATCH", f"/api/usuarios/{id_admin}/rol", {"rol": "usuario"})
+comprobar("Admin no puede cambiarse su propio rol -> 400", codigo == 400,
+          f"codigo={codigo}")
+
+# Promover al tester a gestor: ahora sí puede crear en el catálogo.
+codigo, datos = req("PATCH", f"/api/usuarios/{id_tester}/rol", {"rol": "gestor"})
+comprobar("Admin cambia rol a gestor", codigo == 200 and datos["rol"] == "gestor",
+          f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/plataformas",
+                    {"nombre": "Pippin", "fabricante": "Apple"},
+                    token=TOKEN_PRUEBA)
+comprobar("Gestor puede crear plataforma", codigo == 201, f"codigo={codigo}")
+if codigo == 201:
+    req("DELETE", f"/api/plataformas/{datos['id']}", token=TOKEN_PRUEBA)
+
+codigo, datos = req("GET", "/api/usuarios", token=TOKEN_PRUEBA)
+comprobar("Gestor sigue sin poder listar usuarios -> 403", codigo == 403,
+          f"codigo={codigo}")
+
+codigo, datos = req("PATCH", f"/api/usuarios/{id_tester}/rol", {"rol": "usuario"})
+comprobar("Restaurar rol del tester a usuario", codigo == 200 and datos["rol"] == "usuario")
+
 print()
 if fallos:
     print(f"RESULTADO: {len(fallos)} fallo(s): {fallos}")

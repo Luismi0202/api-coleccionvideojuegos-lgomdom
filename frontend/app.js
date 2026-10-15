@@ -39,7 +39,29 @@ const state = {
                orden: "fecha-desc", total: 0, paginas: 1, cargado: false },
   estadisticas: false,
   editando: null,
+  usuarios: { pagina: 1, porPagina: 10, q: "", rol: "", total: 0, paginas: 1, cargado: false },
 };
+
+/* ---------- Permisos según el rol de la cuenta ---------- */
+const ROLES = [
+  { valor: "usuario", etq: "Usuario" },
+  { valor: "gestor", etq: "Gestor" },
+  { valor: "admin", etq: "Administrador" },
+];
+
+function etqRol(rol) {
+  return (ROLES.find((r) => r.valor === rol) || { etq: rol || "usuario" }).etq;
+}
+
+function esAdmin() {
+  const u = usuarioGuardado();
+  return u.rol === "admin" || u.es_admin === true;
+}
+
+function puedeGestionar() {
+  const u = usuarioGuardado();
+  return u.rol === "gestor" || u.rol === "admin" || u.es_admin === true;
+}
 
 const ESTADOS = ["nuevo", "como nuevo", "bueno", "aceptable", "malo", "digital"];
 
@@ -111,6 +133,7 @@ function activarTab(nombre) {
   $$(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${nombre}`));
   if (nombre === "coleccion" && !state.coleccion.cargado) cargarColeccion();
   if (nombre === "estadisticas" && !state.estadisticas) cargarEstadisticas();
+  if (nombre === "usuarios" && !state.usuarios.cargado) cargarUsuarios();
 }
 
 /* ---------- Carga inicial de catálogos ---------- */
@@ -210,6 +233,12 @@ async function abrirDetalle(id) {
       `<span class="chip">Sin género</span>`;
     const opcionesPlat = (j.plataformas || [])
       .map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+    const accionesGestion = puedeGestionar()
+      ? `<div class="ficha-acciones">
+            <button class="btn btn-fantasma btn-sm" data-editar>✏️ Editar juego</button>
+            <button class="btn btn-peligro btn-sm" data-borrar>🗑 Eliminar juego</button>
+          </div>`
+      : "";
 
     cont.innerHTML = `
       <div class="ficha">
@@ -258,10 +287,7 @@ async function abrirDetalle(id) {
             </div>
           </form>
 
-          <div class="ficha-acciones">
-            <button class="btn btn-fantasma btn-sm" data-editar>✏️ Editar juego</button>
-            <button class="btn btn-peligro btn-sm" data-borrar>🗑 Eliminar juego</button>
-          </div>
+          ${accionesGestion}
         </div>
       </div>`;
 
@@ -269,8 +295,10 @@ async function abrirDetalle(id) {
       ev.preventDefault();
       anadirAColeccion(j, new FormData(ev.target));
     });
-    $("[data-editar]", cont).addEventListener("click", () => abrirFormulario(j));
-    $("[data-borrar]", cont).addEventListener("click", () => eliminarJuego(j));
+    const btnEditar = $("[data-editar]", cont);
+    const btnBorrar = $("[data-borrar]", cont);
+    if (btnEditar) btnEditar.addEventListener("click", () => abrirFormulario(j));
+    if (btnBorrar) btnBorrar.addEventListener("click", () => eliminarJuego(j));
   } catch (e) {
     cont.innerHTML = `<div class="cargando">No se pudo cargar la ficha: ${esc(e.message)}</div>`;
   }
@@ -571,6 +599,57 @@ function renderTop(contenedor, items) {
 }
 
 /* ============================================================
+   USUARIOS (solo admin)
+   ============================================================ */
+function queryUsuarios() {
+  const u = state.usuarios;
+  const p = new URLSearchParams();
+  if (u.q) p.set("q", u.q);
+  if (u.rol) p.set("rol", u.rol);
+  p.set("pagina", u.pagina);
+  p.set("por_pagina", u.porPagina);
+  return p.toString();
+}
+
+async function cargarUsuarios() {
+  const cont = $("#lista-usuarios");
+  cont.innerHTML = esqueletos(6);
+  try {
+    const data = await api(`/api/usuarios?${queryUsuarios()}`);
+    Object.assign(state.usuarios, { total: data.total, paginas: data.paginas, cargado: true });
+    $("#contador-usuarios").textContent = data.total;
+    cont.innerHTML = data.items.length
+      ? data.items.map(filaUsuario).join("")
+      : `<p class="vacio">No hay cuentas que coincidan 😶</p>`;
+    renderPager("#pager-usuarios", state.usuarios, (pag) => {
+      state.usuarios.pagina = pag; cargarUsuarios();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  } catch (e) {
+    cont.innerHTML = `<p class="vacio">Error al cargar usuarios: ${esc(e.message)}</p>`;
+  }
+}
+
+function filaUsuario(u) {
+  const yo = usuarioGuardado();
+  const esYo = u.id === yo.id;
+  const opciones = ROLES.map((r) =>
+    `<option value="${r.valor}" ${u.rol === r.valor ? "selected" : ""}>${r.etq}</option>`
+  ).join("");
+  return `<article class="fila-usuario" data-id="${u.id}">
+    <span class="avatar-fila">${esc((u.nombre || "?").trim().charAt(0).toUpperCase())}</span>
+    <div class="fila-datos">
+      <span class="fila-nombre">${esc(u.nombre)}${esYo ? ' <span class="yo-tag">tú</span>' : ""}</span>
+      <span class="fila-email">${esc(u.email)}</span>
+    </div>
+    <span class="badge-rol rol-${esc(u.rol)}">${esc(etqRol(u.rol))}</span>
+    <select class="select-rol" data-accion="rol"${esYo ? " disabled" : ""}>
+      ${opciones}
+    </select>
+  </article>`;
+}
+
+/* ============================================================
    PAGINADOR
    ============================================================ */
 function renderPager(sel, st, irA) {
@@ -712,6 +791,31 @@ function conectarEventos() {
     }
   });
 
+  // Usuarios (admin): búsqueda, filtro por rol y asignación de rol.
+  $("#buscar-usuarios").addEventListener("input", debounce((e) => {
+    state.usuarios.q = e.target.value.trim();
+    state.usuarios.pagina = 1;
+    cargarUsuarios();
+  }));
+  $("#filtro-rol").addEventListener("change", (e) => {
+    state.usuarios.rol = e.target.value;
+    state.usuarios.pagina = 1;
+    cargarUsuarios();
+  });
+  $("#lista-usuarios").addEventListener("change", async (e) => {
+    const sel = e.target.closest('[data-accion="rol"]');
+    if (!sel || sel.disabled) return;
+    const id = Number(sel.closest("[data-id]").dataset.id);
+    try {
+      await api(`/api/usuarios/${id}/rol`, { method: "PATCH", body: { rol: sel.value } });
+      toast("Rol actualizado ✔");
+      cargarUsuarios();
+    } catch (err) {
+      toast(err.message, "error");
+      cargarUsuarios();
+    }
+  });
+
   // Modales: cerrar con botón, fondo o Escape
   $$(".modal-fondo").forEach((fondo) => {
     fondo.addEventListener("click", (e) => {
@@ -743,6 +847,16 @@ function pintarUsuario(usuario) {
   const nombre = usuario.nombre || usuario.email || "jugador";
   $("#usuario-nombre").textContent = nombre;
   $("#usuario-avatar").textContent = nombre.trim().charAt(0).toUpperCase() || "?";
+
+  // Rol actual en el chip.
+  const rol = usuario.rol || (usuario.es_admin ? "admin" : "usuario");
+  const etiqueta = $("#usuario-rol");
+  etiqueta.textContent = etqRol(rol);
+  etiqueta.className = `usuario-rol rol-${rol}`;
+
+  // Permisos: crear/editar en el catálogo y pestaña de usuarios.
+  $("#btn-nuevo").hidden = !puedeGestionar();
+  $("#tab-btn-usuarios").hidden = !esAdmin();
 }
 
 function usuarioGuardado() {

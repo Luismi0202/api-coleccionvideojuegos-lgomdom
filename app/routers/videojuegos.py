@@ -18,7 +18,7 @@ from app.schemas import (
     VideojuegoCrear,
     VideojuegoSalida,
 )
-from app.seguridad import usuario_actual
+from app.seguridad import requiere_gestor, usuario_actual
 
 router = APIRouter(
     prefix="/api/videojuegos",
@@ -196,6 +196,7 @@ def obtener_videojuego(videojuego_id: int, db: Session = Depends(get_db)):
     response_model=VideojuegoSalida,
     status_code=status.HTTP_201_CREATED,
     summary="Crear un videojuego",
+    dependencies=[Depends(requiere_gestor)],
 )
 def crear_videojuego(
     datos: VideojuegoCrear, db: Session = Depends(get_db)
@@ -227,6 +228,7 @@ def crear_videojuego(
     "/{videojuego_id}",
     response_model=VideojuegoSalida,
     summary="Actualizar un videojuego",
+    dependencies=[Depends(requiere_gestor)],
 )
 def actualizar_videojuego(
     videojuego_id: int,
@@ -265,6 +267,7 @@ def actualizar_videojuego(
 @router.delete(
     "/{videojuego_id}",
     summary="Eliminar un videojuego",
+    dependencies=[Depends(requiere_gestor)],
 )
 def eliminar_videojuego(videojuego_id: int, db: Session = Depends(get_db)):
     vj = _buscar(db, videojuego_id)

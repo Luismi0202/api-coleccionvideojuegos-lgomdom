@@ -9,7 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Usuario
+from app.models import ROL_ADMIN, ROL_GESTOR, Usuario
 
 # En producción define LUDOTECA_SECRET_KEY como variable de entorno.
 SECRET_KEY = os.getenv(
@@ -91,5 +91,38 @@ def usuario_actual(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="El usuario del token no existe o está desactivado",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    return usuario
+
+
+# ---------------------------------------------------------------------------
+# Permisos por rol
+# ---------------------------------------------------------------------------
+def es_admin(usuario: Usuario) -> bool:
+    """True si la cuenta tiene rol de administrador."""
+    return usuario.rol == ROL_ADMIN
+
+
+def puede_gestionar(usuario: Usuario) -> bool:
+    """True si la cuenta puede gestionar el catálogo (gestor o admin)."""
+    return usuario.rol in (ROL_GESTOR, ROL_ADMIN)
+
+
+def requiere_gestor(usuario: Usuario = Depends(usuario_actual)) -> Usuario:
+    """Permite gestionar el catálogo: administradores y gestores."""
+    if not puede_gestionar(usuario):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Necesitas permiso de gestor o administrador para esta acción",
+        )
+    return usuario
+
+
+def requiere_admin(usuario: Usuario = Depends(usuario_actual)) -> Usuario:
+    """Permite administrar la plataforma: solo administradores."""
+    if not es_admin(usuario):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un administrador puede realizar esta acción",
         )
     return usuario

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
     "name": "API Colección de Videojuegos",
-    "description": "Colección completa para probar la API de colección de videojuegos.\n\n**Autenticación (JWT)**: ejecuta primero «0. Autenticación → Iniciar sesión». El token se guarda solo en la variable `token` y todas las peticiones lo usan (auth Bearer a nivel de colección).\n\n0. Autenticación (registro + login)\n1. Videojuegos (CRUD + filtros + paginación)\n2. Plataformas (CRUD)\n3. Géneros (CRUD)\n4. Desarrolladoras (CRUD)\n5. Colección personal (CRUD + favoritos)\n6. Estadísticas\n\nCuenta de ejemplo: `admin@ludoteca.local` / `admin123`\n\nRecuerda arrancar el servidor: `python -m uvicorn app.main:app --port 8000`",
+    "description": "Colección completa para probar la API de colección de videojuegos.\n\n**Autenticación (JWT)**: ejecuta primero «0. Autenticación → Iniciar sesión». El token se guarda solo en la variable `token` y todas las peticiones lo usan (auth Bearer a nivel de colección).\n\n0. Autenticación (registro + login)\n1. Videojuegos (CRUD + filtros + paginación)\n2. Plataformas (CRUD)\n3. Géneros (CRUD)\n4. Desarrolladoras (CRUD)\n5. Colección personal (CRUD + favoritos)\n6. Estadísticas\n7. Usuarios (solo admin)\n\n**Roles**: `usuario` (por defecto) solo gestiona su propia colección; `gestor` además edita el catálogo (videojuegos, plataformas, géneros y desarrolladoras); `admin` además administra las cuentas y sus roles. Los endpoints de escritura del catálogo requieren `gestor` o `admin`; `/api/usuarios` requiere `admin`.\n\nCuenta de ejemplo: `admin@ludoteca.local` / `admin123`\n\nRecuerda arrancar el servidor: `python -m uvicorn app.main:app --port 8000`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -652,6 +652,72 @@
               "host": ["{{base_url}}"],
               "path": ["api", "estadisticas", "top-valoraciones"]
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Usuarios (solo admin)",
+      "item": [
+        {
+          "name": "Listar usuarios",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/usuarios?pagina=1&por_pagina=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usuarios"],
+              "query": [
+                { "key": "pagina", "value": "1" },
+                { "key": "por_pagina", "value": "10" }
+              ]
+            },
+            "description": "Listado paginado de cuentas. Requiere rol admin."
+          }
+        },
+        {
+          "name": "Buscar usuarios (nombre, email o rol)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/usuarios?q=&rol=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usuarios"],
+              "query": [
+                { "key": "q", "value": "", "description": "Texto libre: nombre o email (ej. 'admin')" },
+                { "key": "rol", "value": "", "description": "usuario | gestor | admin" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener usuario por ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/usuarios/2",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usuarios", "2"]
+            }
+          }
+        },
+        {
+          "name": "Cambiar rol de un usuario",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rol\": \"gestor\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/usuarios/2/rol",
+              "host": ["{{base_url}}"],
+              "path": ["api", "usuarios", "2", "rol"]
+            },
+            "description": "Valores: usuario | gestor | admin. Devuelve 400 si intentas cambiarte tu propio rol y 409 si quitas el último admin."
           }
         }
       ]

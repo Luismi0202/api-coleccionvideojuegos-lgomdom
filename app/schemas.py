@@ -36,11 +36,41 @@ class UsuarioSalida(BaseModel):
     id: int
     nombre: str
     email: str
-    es_admin: bool
+    rol: Literal["usuario", "gestor", "admin"] = "usuario"
+    es_admin: bool = False
     activo: bool
     fecha_registro: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RolActualizar(BaseModel):
+    """Cambio de rol desde la pestaña de administración (solo admin)."""
+
+    rol: Literal["usuario", "gestor", "admin"] = Field(
+        ..., description="Nuevo rol de la cuenta"
+    )
+
+
+class PaginaUsuarios(BaseModel):
+    """Respuesta paginada del listado de usuarios (solo admin)."""
+
+    total: int
+    pagina: int
+    por_pagina: int
+    paginas: int
+    items: list[UsuarioSalida]
+
+    @classmethod
+    def crear(cls, total: int, pagina: int, por_pagina: int, items: list):
+        paginas = max(1, math.ceil(total / por_pagina))
+        return cls(
+            total=total,
+            pagina=pagina,
+            por_pagina=por_pagina,
+            paginas=paginas,
+            items=items,
+        )
 
 
 class TokenSalida(BaseModel):

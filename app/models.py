@@ -54,8 +54,14 @@ videojuego_genero = Table(
 
 
 # ---------------------------------------------------------------------------
-# Usuarios (autenticación con JWT)
+# Usuarios (autenticación con JWT) y roles de la plataforma
 # ---------------------------------------------------------------------------
+ROL_USUARIO = "usuario"
+ROL_GESTOR = "gestor"
+ROL_ADMIN = "admin"
+ROLES = (ROL_USUARIO, ROL_GESTOR, ROL_ADMIN)
+
+
 class Usuario(Base):
     __tablename__ = "usuarios"
 
@@ -63,13 +69,26 @@ class Usuario(Base):
     nombre: Mapped[str] = mapped_column(String(50))
     email: Mapped[str] = mapped_column(String(150), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    es_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    rol: Mapped[str] = mapped_column(
+        String(16), default=ROL_USUARIO, server_default=ROL_USUARIO
+    )
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     fecha_registro: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )
 
     items: Mapped[list["ItemColeccion"]] = relationship(back_populates="usuario")
+
+    # --- Permisos (calculados a partir del rol) ---------------------------
+    @property
+    def es_admin(self) -> bool:
+        """Compatibilidad: el antiguo booleano es_admin equivale a rol admin."""
+        return self.rol == ROL_ADMIN
+
+    @property
+    def puede_gestionar(self) -> bool:
+        """Gestores y administradores pueden tocar el catálogo."""
+        return self.rol in (ROL_GESTOR, ROL_ADMIN)
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from app.schemas import (
     DesarrolladoraCrear,
     DesarrolladoraSalida,
 )
-from app.seguridad import usuario_actual
+from app.seguridad import requiere_gestor, usuario_actual
 
 router = APIRouter(
     prefix="/api/desarrolladoras",
@@ -47,7 +47,8 @@ def obtener_desarrolladora(
 
 @router.post("", response_model=DesarrolladoraSalida,
              status_code=status.HTTP_201_CREATED,
-             summary="Crear una desarrolladora")
+             summary="Crear una desarrolladora",
+             dependencies=[Depends(requiere_gestor)])
 def crear_desarrolladora(
     datos: DesarrolladoraCrear, db: Session = Depends(get_db)
 ):
@@ -73,7 +74,8 @@ def crear_desarrolladora(
 
 
 @router.put("/{desarrolladora_id}", response_model=DesarrolladoraSalida,
-            summary="Actualizar una desarrolladora")
+            summary="Actualizar una desarrolladora",
+            dependencies=[Depends(requiere_gestor)])
 def actualizar_desarrolladora(
     desarrolladora_id: int,
     datos: DesarrolladoraActualizar,
@@ -87,7 +89,8 @@ def actualizar_desarrolladora(
     return desarrolladora
 
 
-@router.delete("/{desarrolladora_id}", summary="Eliminar una desarrolladora")
+@router.delete("/{desarrolladora_id}", summary="Eliminar una desarrolladora",
+               dependencies=[Depends(requiere_gestor)])
 def eliminar_desarrolladora(
     desarrolladora_id: int, db: Session = Depends(get_db)
 ):

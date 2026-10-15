@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ItemColeccion, Plataforma, videojuego_plataforma
 from app.schemas import PlataformaCrear, PlataformaSalida, PlataformaActualizar
-from app.seguridad import usuario_actual
+from app.seguridad import requiere_gestor, usuario_actual
 
 router = APIRouter(
     prefix="/api/plataformas",
@@ -39,7 +39,8 @@ def obtener_plataforma(plataforma_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=PlataformaSalida,
-             status_code=status.HTTP_201_CREATED, summary="Crear una plataforma")
+             status_code=status.HTTP_201_CREATED, summary="Crear una plataforma",
+             dependencies=[Depends(requiere_gestor)])
 def crear_plataforma(datos: PlataformaCrear, db: Session = Depends(get_db)):
     repetida = db.scalar(
         select(Plataforma).where(
@@ -63,7 +64,8 @@ def crear_plataforma(datos: PlataformaCrear, db: Session = Depends(get_db)):
 
 
 @router.put("/{plataforma_id}", response_model=PlataformaSalida,
-            summary="Actualizar una plataforma")
+            summary="Actualizar una plataforma",
+            dependencies=[Depends(requiere_gestor)])
 def actualizar_plataforma(
     plataforma_id: int,
     datos: PlataformaActualizar,
@@ -77,7 +79,8 @@ def actualizar_plataforma(
     return plataforma
 
 
-@router.delete("/{plataforma_id}", summary="Eliminar una plataforma")
+@router.delete("/{plataforma_id}", summary="Eliminar una plataforma",
+               dependencies=[Depends(requiere_gestor)])
 def eliminar_plataforma(plataforma_id: int, db: Session = Depends(get_db)):
     plataforma = _buscar(db, plataforma_id)
 

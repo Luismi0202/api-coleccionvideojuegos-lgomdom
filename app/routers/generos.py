@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Genero, videojuego_genero
 from app.schemas import GeneroActualizar, GeneroCrear, GeneroSalida
-from app.seguridad import usuario_actual
+from app.seguridad import requiere_gestor, usuario_actual
 
 router = APIRouter(
     prefix="/api/generos",
@@ -37,7 +37,8 @@ def obtener_genero(genero_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=GeneroSalida,
-             status_code=status.HTTP_201_CREATED, summary="Crear un género")
+             status_code=status.HTTP_201_CREATED, summary="Crear un género",
+             dependencies=[Depends(requiere_gestor)])
 def crear_genero(datos: GeneroCrear, db: Session = Depends(get_db)):
     repetido = db.scalar(
         select(Genero).where(
@@ -60,7 +61,8 @@ def crear_genero(datos: GeneroCrear, db: Session = Depends(get_db)):
 
 
 @router.put("/{genero_id}", response_model=GeneroSalida,
-            summary="Actualizar un género")
+            summary="Actualizar un género",
+            dependencies=[Depends(requiere_gestor)])
 def actualizar_genero(
     genero_id: int,
     datos: GeneroActualizar,
@@ -74,7 +76,8 @@ def actualizar_genero(
     return genero
 
 
-@router.delete("/{genero_id}", summary="Eliminar un género")
+@router.delete("/{genero_id}", summary="Eliminar un género",
+               dependencies=[Depends(requiere_gestor)])
 def eliminar_genero(genero_id: int, db: Session = Depends(get_db)):
     genero = _buscar(db, genero_id)
 

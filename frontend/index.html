@@ -32,6 +32,7 @@
       <button class="tab activo" data-tab="catalogo">🗂️ Catálogo</button>
       <button class="tab" data-tab="coleccion">📚 Mi colección</button>
       <button class="tab" data-tab="estadisticas">📊 Estadísticas</button>
+      <button class="tab" data-tab="usuarios" id="tab-btn-usuarios" hidden>👥 Usuarios</button>
     </nav>
 
     <div class="topbar-acciones">
@@ -39,6 +40,7 @@
       <div class="usuario-chip" id="usuario-chip" hidden>
         <span class="usuario-avatar" id="usuario-avatar">?</span>
         <span class="usuario-nombre" id="usuario-nombre">—</span>
+        <span class="usuario-rol" id="usuario-rol"></span>
         <button class="usuario-salir" id="btn-salir" title="Cerrar sesión">Salir</button>
       </div>
     </div>
@@ -150,6 +152,39 @@
           <ol class="top-lista" id="top-valoraciones"></ol>
         </div>
       </div>
+    </section>
+
+    <!-- ================= USUARIOS (solo admin) ================= -->
+    <section class="tab-panel" id="tab-usuarios">
+      <div class="hero glass">
+        <div>
+          <h2>Usuarios de la plataforma</h2>
+          <p>Busca una cuenta y asígnale su rol. Los <b>gestores</b> pueden editar
+             el catálogo y los <b>administradores</b> además gestionan las cuentas.</p>
+        </div>
+        <div class="hero-dato">
+          <span class="hero-num" id="contador-usuarios">—</span>
+          <span class="hero-lbl">cuentas</span>
+        </div>
+      </div>
+
+      <div class="filtros glass">
+        <div class="campo campo-buscar">
+          <span class="icono">🔎</span>
+          <input type="search" id="buscar-usuarios" placeholder="Buscar por nombre, email o rol…" autocomplete="off">
+        </div>
+        <div class="campo">
+          <select id="filtro-rol">
+            <option value="">Todos los roles</option>
+            <option value="usuario">Usuario</option>
+            <option value="gestor">Gestor</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="lista-usuarios" id="lista-usuarios"></div>
+      <div class="pager" id="pager-usuarios"></div>
     </section>
   </main>
 

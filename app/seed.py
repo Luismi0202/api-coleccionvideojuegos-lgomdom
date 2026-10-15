@@ -3,6 +3,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models import (
+    ROL_ADMIN,
     Desarrolladora,
     Genero,
     ItemColeccion,
@@ -277,9 +278,14 @@ def asegurar_admin(db: Session) -> Usuario:
             nombre=ADMIN_NOMBRE,
             email=ADMIN_EMAIL,
             password_hash=hash_password(ADMIN_PASSWORD),
-            es_admin=True,
+            rol=ROL_ADMIN,
         )
         db.add(admin)
+        db.commit()
+        db.refresh(admin)
+    elif admin.rol != ROL_ADMIN:
+        # BD anterior al sistema de roles: la cuenta admin conserva sus permisos.
+        admin.rol = ROL_ADMIN
         db.commit()
         db.refresh(admin)
     return admin

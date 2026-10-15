@@ -1,4 +1,6 @@
 """Configuración de la base de datos (SQLite + SQLAlchemy 2.0)."""
+import sqlite3
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -138,5 +140,103 @@ def migrar_colecciones(admin_id: int) -> bool:
         _recrear_indices(conn)
         conn.commit()
         return True
+    finally:
+        conn.close()
+
+
+def _quitar_es_admin(conn) -> None:
+    """Elimina la columna obsoleta ``es_admin`` de la tabla ``usuarios``.
+
+    En SQLite >= 3.35 basta con ``DROP COLUMN``. En versiones anteriores hay
+    que reconstruir la tabla; se hace con una conexión cruda y las claves
+    foráneas desactivadas para no chocar con los ejemplares de colección.
+    """
+    try:
+        conn.exec_driver_sql("ALTER TABLE usuarios DROP COLUMN es_admin")
+        return
+    except Exception:
+        pass  # SQLite antiguo: reconstruimos la tabla a mano.
+
+    conn.commit()  # libera el bloqueo antes de abrir la conexión cruda
+    cruda = sqlite3.connect(engine.url.database)
+    try:
+        cruda.execute("PRAGMA foreign_keys=OFF")
+        cruda.executescript(
+            """
+            CREATE TABLE usuarios__nueva (
+                id INTEGER NOT NULL PRIMARY KEY,
+                nombre VARCHAR(50) NOT NULL,
+                email VARCHAR(150) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                rol VARCHAR(16) NOT NULL DEFAULT 'usuario',
+                activo BOOLEAN NOT NULL,
+                fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO usuarios__nueva
+                (id, nombre, email, password_hash, rol, activo, fecha_registro)
+            SELECT id, nombre, email, password_hash, rol, activo, fecha_registro
+            FROM usuarios;
+            DROP TABLE usuarios;
+            ALTER TABLE usuarios__nueva RENAME TO usuarios;
+            CREATE INDEX IF NOT EXISTS ix_usuarios_email ON usuarios (email);
+            CREATE INDEX IF NOT EXISTS ix_usuarios_rol ON usuarios (rol);
+            """
+        )
+        cruda.commit()
+    finally:
+        cruda.close()
+
+
+def migrar_usuarios() -> bool:
+    """Adapta la tabla ``usuarios`` al sistema de roles.
+
+    Antes de los roles, ``usuarios`` tenía un booleano ``es_admin``. Esta
+    migración añade la columna ``rol`` (con valor por defecto ``"usuario"``)
+    y asciende a ``admin`` las cuentas que tuvieran ``es_admin = 1``.
+
+    Está pensada para poder reanudarse: si la columna ya existe, no vuelve a
+    añadirla. Devuelve ``True`` si hubo que tocar la base de datos.
+    """
+    conn = engine.connect()
+    try:
+        tablas = {
+            fila[0]
+            for fila in conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "usuarios" not in tablas:  # la creará create_all()
+            return False
+
+        columnas = [
+            fila[1]
+            for fila in conn.exec_driver_sql("PRAGMA table_info(usuarios)")
+        ]
+
+        hubo_cambios = False
+
+        if "rol" not in columnas:
+            conn.exec_driver_sql(
+                "ALTER TABLE usuarios ADD COLUMN rol VARCHAR(16) "
+                "NOT NULL DEFAULT 'usuario'"
+            )
+            hubo_cambios = True
+
+        # Conserva como administradores a quienes ya lo eran con el booleano.
+        if "es_admin" in columnas:
+            conn.exec_driver_sql(
+                "UPDATE usuarios SET rol = 'admin' WHERE es_admin = 1"
+            )
+            # El modelo ya no usa es_admin y la antigua columna era NOT NULL
+            # sin valor por defecto: si se queda, rompe los registros nuevos.
+            _quitar_es_admin(conn)
+            hubo_cambios = True
+
+        if hubo_cambios:
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_usuarios_rol ON usuarios (rol)"
+            )
+            conn.commit()
+        return hubo_cambios
     finally:
         conn.close()
