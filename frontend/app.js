@@ -633,6 +633,10 @@ async function cargarUsuarios() {
 function filaUsuario(u) {
   const yo = usuarioGuardado();
   const esYo = u.id === yo.id;
+  const puedeCambiar = esAdmin() && !esYo;
+  const motivo = !esAdmin()
+    ? "Solo un administrador puede cambiar roles"
+    : esYo ? "No puedes cambiar tu propio rol" : "";
   const opciones = ROLES.map((r) =>
     `<option value="${r.valor}" ${u.rol === r.valor ? "selected" : ""}>${r.etq}</option>`
   ).join("");
@@ -643,7 +647,7 @@ function filaUsuario(u) {
       <span class="fila-email">${esc(u.email)}</span>
     </div>
     <span class="badge-rol rol-${esc(u.rol)}">${esc(etqRol(u.rol))}</span>
-    <select class="select-rol" data-accion="rol"${esYo ? " disabled" : ""}>
+    <select class="select-rol" data-accion="rol"${puedeCambiar ? "" : " disabled"}${motivo ? ` title="${motivo}"` : ""}>
       ${opciones}
     </select>
   </article>`;
@@ -804,7 +808,7 @@ function conectarEventos() {
   });
   $("#lista-usuarios").addEventListener("change", async (e) => {
     const sel = e.target.closest('[data-accion="rol"]');
-    if (!sel || sel.disabled) return;
+    if (!sel || sel.disabled || !esAdmin()) return;
     const id = Number(sel.closest("[data-id]").dataset.id);
     try {
       await api(`/api/usuarios/${id}/rol`, { method: "PATCH", body: { rol: sel.value } });
@@ -854,9 +858,10 @@ function pintarUsuario(usuario) {
   etiqueta.textContent = etqRol(rol);
   etiqueta.className = `usuario-rol rol-${rol}`;
 
-  // Permisos: crear/editar en el catálogo y pestaña de usuarios.
+  // Permisos: el catálogo lo gestionan admin y gestor; la pestaña de usuarios
+  // la ven ambos, pero solo el admin puede cambiar roles (ver filaUsuario).
   $("#btn-nuevo").hidden = !puedeGestionar();
-  $("#tab-btn-usuarios").hidden = !esAdmin();
+  $("#tab-btn-usuarios").hidden = !puedeGestionar();
 }
 
 function usuarioGuardado() {

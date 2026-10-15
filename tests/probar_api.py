@@ -320,7 +320,7 @@ codigo, datos = req("PATCH", f"/api/usuarios/{id_admin}/rol", {"rol": "usuario"}
 comprobar("Admin no puede cambiarse su propio rol -> 400", codigo == 400,
           f"codigo={codigo}")
 
-# Promover al tester a gestor: ahora sí puede crear en el catálogo.
+# Promover al tester a gestor: ahora puede crear en el catálogo y ver usuarios.
 codigo, datos = req("PATCH", f"/api/usuarios/{id_tester}/rol", {"rol": "gestor"})
 comprobar("Admin cambia rol a gestor", codigo == 200 and datos["rol"] == "gestor",
           f"codigo={codigo}")
@@ -332,9 +332,17 @@ comprobar("Gestor puede crear plataforma", codigo == 201, f"codigo={codigo}")
 if codigo == 201:
     req("DELETE", f"/api/plataformas/{datos['id']}", token=TOKEN_PRUEBA)
 
+# El gestor puede consultar cuentas, pero no cambiar roles.
 codigo, datos = req("GET", "/api/usuarios", token=TOKEN_PRUEBA)
-comprobar("Gestor sigue sin poder listar usuarios -> 403", codigo == 403,
+comprobar("Gestor puede listar usuarios", codigo == 200 and datos.get("total", 0) >= 2,
           f"codigo={codigo}")
+
+codigo, datos = req("GET", f"/api/usuarios/{id_admin}", token=TOKEN_PRUEBA)
+comprobar("Gestor puede ver una cuenta", codigo == 200, f"codigo={codigo}")
+
+codigo, datos = req("PATCH", f"/api/usuarios/{id_admin}/rol", {"rol": "usuario"},
+                    token=TOKEN_PRUEBA)
+comprobar("Gestor no puede cambiar roles -> 403", codigo == 403, f"codigo={codigo}")
 
 codigo, datos = req("PATCH", f"/api/usuarios/{id_tester}/rol", {"rol": "usuario"})
 comprobar("Restaurar rol del tester a usuario", codigo == 200 and datos["rol"] == "usuario")

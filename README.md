@@ -44,11 +44,12 @@ Cualquier persona puede **crear su propia cuenta** desde el panel o con
 | Rol | Colección propia | Catálogo (juegos, plataformas, géneros, desarrolladoras) | Usuarios |
 |-----|:---:|:---:|:---:|
 | `usuario` | Gestionar la suya | Solo lectura | — |
-| `gestor` | Gestionar la suya | Crear, editar y borrar | — |
-| `admin` | Gestionar la suya | Crear, editar y borrar | Listar, buscar y cambiar roles |
+| `gestor` | Gestionar la suya | Crear, editar y borrar | Solo consultar |
+| `admin` | Gestionar la suya | Crear, editar y borrar | Consultar y cambiar roles |
 
 - El rol se asigna al registrarse (`usuario`) y solo un **admin** puede
-  cambiarlo (`PATCH /api/usuarios/{id}/rol`).
+  cambiarlo (`PATCH /api/usuarios/{id}/rol`). Los **gestores** pueden ver y
+  buscar cuentas, pero no asignar roles.
 - Escribir en el catálogo (POST/PUT/DELETE) exige rol `gestor` o `admin`
   (si no, `403 Forbidden`).
 
@@ -125,7 +126,7 @@ Con eso la BD queda con **21 juegos** en total.
 | 4 | **Desarrolladoras** | `/api/desarrolladoras` | CRUD de estudios/empresas |
 | 5 | **Colección** | `/api/colecciones` | Tus ejemplares: estado, fecha y precio de compra, valoración, favoritos y notas (por usuario) |
 | 6 | **Estadísticas** | `/api/estadisticas` | Resumen de tu colección, conteos por plataforma/género/estado y top valoraciones |
-| 7 | **Usuarios** | `/api/usuarios` | Listar, buscar y cambiar el rol de las cuentas (**solo admin**) |
+| 7 | **Usuarios** | `/api/usuarios` | Consultar cuentas (**admin y gestor**); cambiar el rol (**solo admin**) |
 
 ## Endpoints
 
@@ -237,18 +238,19 @@ Filtros de `GET /api/colecciones`:
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/usuarios` | Listado paginado con búsqueda (`q`) y filtro por `rol` (**admin**) |
-| GET | `/api/usuarios/{id}` | Detalle de una cuenta (**admin**) |
-| PATCH | `/api/usuarios/{id}/rol` | Cambiar el rol: `usuario`, `gestor` o `admin` (**admin**) |
+| GET | `/api/usuarios` | Listado paginado con búsqueda (`q`) y filtro por `rol` (**admin y gestor**) |
+| GET | `/api/usuarios/{id}` | Detalle de una cuenta (**admin y gestor**) |
+| PATCH | `/api/usuarios/{id}/rol` | Cambiar el rol: `usuario`, `gestor` o `admin` (**solo admin**) |
 
 Reglas: un admin no puede cambiarse su **propio** rol (`400`) ni quitar el
-**último admin** que queda (`409`).
+**último admin** que queda (`409`). Un **gestor** puede consultar las cuentas,
+pero no cambiar roles (`403`).
 
 ## Panel web "Ludoteca"
 
 Interfaz gráfica incluida y servida por la propia API en
 **<http://localhost:8000/panel>**. Está hecha con HTML, CSS y JavaScript
-"vanilla" (sin build, sin frameworks) y consume los 6 apartados de la API.
+"vanilla" (sin build, sin frameworks) y consume los 7 apartados de la API.
 
 - **🔐 Login / registro**: al entrar sin sesión te redirige a
   <http://localhost:8000/panel/login.html>, una pantalla con el mismo estilo
@@ -265,9 +267,10 @@ Interfaz gráfica incluida y servida por la propia API en
   mejores valoraciones.
 - **CRUD desde la interfaz**: botón "＋ Nuevo juego" y editar/eliminar juegos
   (solo **gestor/admin**), y "Añadir a mi colección" desde cada ficha.
-- **👥 Usuarios** (solo **admin**): pestaña con buscador (lupa) por nombre,
-  email o rol y un selector para asignar el rol de cada cuenta. En la cabecera
-  se muestra el rol del usuario conectado.
+- **👥 Usuarios** (**admin y gestor**): pestaña con buscador (lupa) por nombre,
+  email o rol. Los **gestores** pueden consultar cuentas (selector de rol
+  desactivado); solo los **administradores** pueden asignar roles. En la
+  cabecera se muestra el rol del usuario conectado.
 
 El panel detecta automáticamente la URL de la API: si se sirve desde FastAPI
 usa rutas relativas y, si abres el HTML como archivo local, apunta a
@@ -285,7 +288,7 @@ usa rutas relativas y, si abres el HTML como archivo local, apunta a
    así el resto de peticiones ya van autenticadas.
 5. Ejecuta el resto de carpetas: General, 1. Videojuegos, 2. Plataformas,
    3. Géneros, 4. Desarrolladoras, 5. Colección, 6. Estadísticas y
-   7. Usuarios (solo funciona con el token del admin).
+   7. Usuarios (admin y gestor; cambiar roles solo con el token del admin).
 
 ## Uso desde una página web
 
@@ -336,11 +339,12 @@ Con el servidor levantado:
 python tests/probar_api.py
 ```
 
-Ejecuta ~66 comprobaciones (CRUD de los 7 apartados, filtros, paginación,
+Ejecuta ~68 comprobaciones (CRUD de los 7 apartados, filtros, paginación,
 validaciones, códigos 404/409/422 y **autenticación JWT**: registro, login,
 rechazo sin token, aislamiento de la colección por usuario y **roles**: un
-`usuario` no puede escribir en el catálogo (`403`), un `gestor` sí, y solo un
-`admin` administra las cuentas).
+`usuario` no puede escribir en el catálogo (`403`), un `gestor` sí y puede
+consultar cuentas pero no cambiar roles, y solo un `admin` administra los
+roles).
 
 ## Estructura del proyecto
 
@@ -354,7 +358,7 @@ rechazo sin token, aislamiento de la colección por usuario y **roles**: un
 │   ├── seed.py            # Datos de ejemplo + cuenta admin
 │   ├── datos_prueba.py     # Añade la saga Trails (idempotente)
 │   └── routers/
-│       ├── auth.py            # 0. Registro / login / usuario actual (JWT) + 7. Usuarios (roles)
+│       ├── auth.py            # 0. Registro / login / usuario actual (JWT) + 7. Usuarios
 │       ├── videojuegos.py     # 1. CRUD + filtros + paginación
 │       ├── plataformas.py     # 2. CRUD
 │       ├── generos.py         # 3. CRUD

@@ -18,6 +18,7 @@ from app.seguridad import (
     crear_token,
     hash_password,
     requiere_admin,
+    requiere_gestor,
     usuario_actual,
     verificar_password,
 )
@@ -25,9 +26,9 @@ from app.seguridad import (
 router = APIRouter(prefix="/api/auth", tags=["0. Autenticación"])
 
 # ---------------------------------------------------------------------------
-# Administración de usuarios (solo admin): listado, búsqueda y roles.
-# Se sirve bajo /api/usuarios, pero agrupado aquí porque es parte de las
-# cuentas, igual que el registro y el login.
+# Usuarios: listado y búsqueda para admin y gestor; los roles solo los
+# cambia un admin. Se sirve bajo /api/usuarios, pero agrupado aquí porque es
+# parte de las cuentas, igual que el registro y el login.
 # ---------------------------------------------------------------------------
 router_usuarios = APIRouter(prefix="/api/usuarios", tags=["7. Usuarios"])
 
@@ -37,7 +38,7 @@ _ORDEN_USUARIOS = (Usuario.nombre.asc(), Usuario.id.asc())
 @router_usuarios.get(
     "",
     response_model=PaginaUsuarios,
-    summary="Listar usuarios con búsqueda (solo admin)",
+    summary="Listar usuarios con búsqueda (admin y gestor)",
 )
 def listar_usuarios(
     q: str | None = Query(None, description="Busca por nombre, email o rol"),
@@ -45,7 +46,7 @@ def listar_usuarios(
     pagina: int = Query(1, ge=1),
     por_pagina: int = Query(12, ge=1, le=100),
     db: Session = Depends(get_db),
-    admin: Usuario = Depends(requiere_admin),
+    _usuario: Usuario = Depends(requiere_gestor),
 ):
     filtros = []
     if q:
@@ -74,12 +75,12 @@ def listar_usuarios(
 @router_usuarios.get(
     "/{usuario_id}",
     response_model=UsuarioSalida,
-    summary="Ver una cuenta (solo admin)",
+    summary="Ver una cuenta (admin y gestor)",
 )
 def ver_usuario(
     usuario_id: int,
     db: Session = Depends(get_db),
-    admin: Usuario = Depends(requiere_admin),
+    _usuario: Usuario = Depends(requiere_gestor),
 ):
     usuario = db.get(Usuario, usuario_id)
     if usuario is None:
