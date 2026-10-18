@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
     "name": "API Colección de Videojuegos",
-    "description": "Colección completa para probar la API de colección de videojuegos.\n\n**Autenticación (JWT)**: ejecuta primero «0. Autenticación → Iniciar sesión». El token se guarda solo en la variable `token` y todas las peticiones lo usan (auth Bearer a nivel de colección).\n\n0. Autenticación (registro + login)\n1. Videojuegos (CRUD + filtros + paginación)\n2. Plataformas (CRUD)\n3. Géneros (CRUD)\n4. Desarrolladoras (CRUD)\n5. Colección personal (CRUD + favoritos)\n6. Estadísticas\n7. Usuarios (admin y gestor)\n\n**Roles**: `usuario` (por defecto) solo gestiona su propia colección; `gestor` además edita el catálogo (videojuegos, plataformas, géneros y desarrolladoras) y consulta las cuentas; `admin` además asigna los roles. Escribir en el catálogo y consultar `/api/usuarios` requiere `gestor` o `admin`; cambiar roles requiere `admin`.\n\nCuenta de ejemplo: `admin@ludoteca.local` / `admin123`\n\nRecuerda arrancar el servidor: `python -m uvicorn app.main:app --port 8000`",
+    "description": "Colección completa para probar la API de colección de videojuegos.\n\n**Autenticación (JWT)**: ejecuta primero «0. Autenticación → Iniciar sesión». El login guarda dos tokens: `token` (access, caduca a las 8 h) y `refresh_token` (para renovar la sesión con «0. Autenticación → Renovar token (refresh)» cuando responda 401). Todas las peticiones usan el access como auth Bearer a nivel de colección.\n\n0. Autenticación (registro + login + refresh)\n1. Videojuegos (CRUD + filtros + paginación)\n2. Plataformas (CRUD)\n3. Géneros (CRUD)\n4. Desarrolladoras (CRUD)\n5. Colección personal (CRUD + favoritos)\n6. Estadísticas\n7. Usuarios (admin y gestor)\n\n**Roles**: `usuario` (por defecto) solo gestiona su propia colección; `gestor` además edita el catálogo (videojuegos, plataformas, géneros y desarrolladoras) y consulta las cuentas; `admin` además asigna los roles. Escribir en el catálogo y consultar `/api/usuarios` requiere `gestor` o `admin`; cambiar roles requiere `admin`.\n\nCuenta de ejemplo: `admin@ludoteca.local` / `admin123`\n\nRecuerda arrancar el servidor: `python -m uvicorn app.main:app --port 8000`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -22,7 +22,13 @@
     },
     {
       "key": "token",
-      "value": ""
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -62,6 +68,10 @@
                   "    console.log('Token JWT guardado en la variable token');",
                   "} else {",
                   "    console.error('No se recibió access_token');",
+                  "}",
+                  "if (data && data.refresh_token) {",
+                  "    pm.collectionVariables.set('refresh_token', data.refresh_token);",
+                  "    console.log('Refresh token guardado en la variable refresh_token');",
                   "}"
                 ]
               }
@@ -81,7 +91,46 @@
               "host": ["{{base_url}}"],
               "path": ["api", "auth", "login"]
             },
-            "description": "Devuelve el token JWT y lo guarda automáticamente en la variable {{token}} para el resto de peticiones."
+            "description": "Devuelve dos tokens: el access (variable {{token}}) y el refresh (variable {{refresh_token}}), que se usan en el resto de peticiones y en la renovación de sesión."
+          }
+        },
+        {
+          "name": "Renovar token (refresh)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (pm.response.code === 200 && data.access_token) {",
+                  "    pm.collectionVariables.set('token', data.access_token);",
+                  "    if (data.refresh_token) {",
+                  "        pm.collectionVariables.set('refresh_token', data.refresh_token);",
+                  "    }",
+                  "    console.log('Par de tokens renovado (rotación)');",
+                  "} else {",
+                  "    console.error('No se pudo renovar la sesión: ' + JSON.stringify(data));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Renueva la sesión sin volver a escribir la contraseña: cambia el refresh_token por un par nuevo de tokens y lo guarda en {{token}} y {{refresh_token}}. Útil cuando el access ha caducado y la API responde 401."
           }
         },
         {

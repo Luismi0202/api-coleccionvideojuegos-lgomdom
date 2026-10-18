@@ -75,9 +75,21 @@ class PaginaUsuarios(BaseModel):
 
 class TokenSalida(BaseModel):
     access_token: str
+    refresh_token: str = Field(
+        ..., description="Token largo para renovar la sesión (POST /api/auth/refresh)"
+    )
     token_type: str = "bearer"
     expira_en_segundos: int = Field(..., description="Validez del token")
+    refresh_expira_en_segundos: Optional[int] = Field(
+        None, description="Validez del refresh token"
+    )
     usuario: UsuarioSalida
+
+
+class TokenRefresco(BaseModel):
+    """Cuerpo de POST /api/auth/refresh: renueva la sesión con el refresh token."""
+
+    refresh_token: str = Field(..., examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6..."])
 
 
 # ---------------------------------------------------------------------------

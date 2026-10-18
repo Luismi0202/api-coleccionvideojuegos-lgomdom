@@ -5,8 +5,9 @@ videojuegos. Pensada para consumirse desde páginas web (fetch/axios) o desde
 **Postman**: cada videojuego devuelve su **carátula**, **descripción**, géneros,
 plataformas y desarrolladora en un solo JSON.
 
-Incluye **autenticación con JSON Web Tokens (JWT)** y **roles**: se puede crear
-cuenta, iniciar sesión y cada usuario tiene **su propia colección**. Hay tres
+Incluye **autenticación con JSON Web Tokens (JWT)** con **renovación
+automática de sesión (refresh token)** y **roles**: se puede crear cuenta,
+iniciar sesión y cada usuario tiene **su propia colección**. Hay tres
 roles: **usuario** (por defecto), **gestor** (edita el catálogo) y **admin**
 (además administra las cuentas).
 
@@ -61,8 +62,9 @@ al iniciar sesión.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/api/auth/registro` | Crea la cuenta y devuelve el token (201) |
-| POST | `/api/auth/login` | Inicia sesión y devuelve el token |
+| POST | `/api/auth/registro` | Crea la cuenta y devuelve los tokens (201) |
+| POST | `/api/auth/login` | Inicia sesión y devuelve los tokens |
+| POST | `/api/auth/refresh` | Renueva la sesión con el `refresh_token` (sin contraseña) |
 | GET | `/api/auth/yo` | Devuelve el usuario del token (requiere token) |
 
 Ejemplo de registro:
@@ -78,8 +80,10 @@ Respuesta:
 ```json
 {
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "bearer",
   "expira_en_segundos": 28800,
+  "refresh_expira_en_segundos": 604800,
   "usuario": { "id": 2, "nombre": "Maic", "email": "maic@ejemplo.com", "rol": "usuario", "es_admin": false, "activo": true }
 }
 ```
@@ -91,13 +95,33 @@ curl http://localhost:8000/api/colecciones \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
+### Renovación del token (refresh)
+
+Cuando el `access_token` caduca (`401`), no hace falta volver a escribir la
+contraseña: se pide uno nuevo con el `refresh_token`. Las respuestas de
+`/registro` y `/login` ya traen los dos tokens:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}'
+```
+
+La respuesta es **otro par de tokens** (rotación): el `refresh_token` anterior
+deja de ser el vigente. El panel web lo hace **automáticamente**: renueva el
+token a punto de caducar y, si aun así llega un `401`, reintenta la petición
+una vez antes de cerrar la sesión.
+
 Detalles:
 
-- El token es un **JWT firmado (HS256)** con validez de **8 horas** (`exp`).
+- El `access_token` es un **JWT firmado (HS256)** con validez de **8 horas**
+  (`exp`); el `refresh_token` dura **7 días** y solo sirve para renovar
+  (lleva el claim `tipo` que impide usar uno por el otro).
 - Las contraseñas se guardan con **hash bcrypt** (nunca en claro).
-- En Swagger (`/docs`) pulsa **Authorize** y pega el token para probar.
+- En Swagger (`/docs`) pulsa **Authorize** y pega el access token para probar.
 - La clave de firma se puede cambiar con la variable de entorno
-  `LUDOTECA_SECRET_KEY` (por defecto hay una de desarrollo).
+  `LUDOTECA_SECRET_KEY` (por defecto hay una de desarrollo); la validez, con
+  `LUDOTECA_TOKEN_MINUTOS` (access) y `LUDOTECA_REFRESH_MINUTOS` (refresh).
 - La **colección es por usuario**: cada cuenta solo ve y gestiona sus propios
   ejemplares. El catálogo (juegos, plataformas, géneros, desarrolladoras) es
   compartido.
@@ -119,7 +143,7 @@ Con eso la BD queda con **21 juegos** en total.
 
 | # | Apartado | Prefijo | Qué hace |
 |---|----------|---------|----------|
-| 0 | **Autenticación** | `/api/auth` | Registro, login y usuario actual con JWT |
+| 0 | **Autenticación** | `/api/auth` | Registro, login, usuario actual con JWT y renovación del token (`/refresh`) |
 | 1 | **Videojuegos** | `/api/videojuegos` | CRUD completo + búsqueda, filtros y paginación. Es el corazón de la API: carátula, descripción, año, PEGI, puntuación, plataformas, géneros y desarrolladora |
 | 2 | **Plataformas** | `/api/plataformas` | CRUD de plataformas (PC, PS5, Switch...) |
 | 3 | **Géneros** | `/api/generos` | CRUD de géneros (RPG, Indie, Metroidvania...) |
@@ -339,8 +363,9 @@ Con el servidor levantado:
 python tests/probar_api.py
 ```
 
-Ejecuta ~68 comprobaciones (CRUD de los 7 apartados, filtros, paginación,
+Ejecuta ~77 comprobaciones (CRUD de los 7 apartados, filtros, paginación,
 validaciones, códigos 404/409/422 y **autenticación JWT**: registro, login,
+**renovación con refresh token** (y rechazo de un access usado como refresh),
 rechazo sin token, aislamiento de la colección por usuario y **roles**: un
 `usuario` no puede escribir en el catálogo (`403`), un `gestor` sí y puede
 consultar cuentas pero no cambiar roles, y solo un `admin` administra los
@@ -358,7 +383,7 @@ roles).
 │   ├── seed.py            # Datos de ejemplo + cuenta admin
 │   ├── datos_prueba.py     # Añade la saga Trails (idempotente)
 │   └── routers/
-│       ├── auth.py            # 0. Registro / login / usuario actual (JWT) + 7. Usuarios
+│       ├── auth.py            # 0. Registro / login / refresh (JWT) + 7. Usuarios
 │       ├── videojuegos.py     # 1. CRUD + filtros + paginación
 │       ├── plataformas.py     # 2. CRUD
 │       ├── generos.py         # 3. CRUD
@@ -384,8 +409,9 @@ roles).
   `PUT /api/videojuegos/{id}` con la URL de la imagen que quieras
   (por ejemplo, la de RAWG, IGDB o Wikipedia).
 - Autenticación: las contraseñas se guardan con **bcrypt** y los tokens se
-  firman con HS256. Define `LUDOTECA_SECRET_KEY` (y opcionalmente
-  `LUDOTECA_TOKEN_MINUTOS`) en el entorno para producción; si no, se usan
+  firman con HS256 (access corto + refresh para renovar la sesión). Define
+  `LUDOTECA_SECRET_KEY` (y opcionalmente `LUDOTECA_TOKEN_MINUTOS` y
+  `LUDOTECA_REFRESH_MINUTOS`) en el entorno para producción; si no, se usan
   valores de desarrollo.
 - Código de estado: `200` OK · `201` creado · `401` sin autenticar ·
   `403` sin permisos (rol insuficiente) · `404` no existe ·

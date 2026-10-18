@@ -1,16 +1,27 @@
 """Pruebas rápidas de la API (se ejecutan contra el servidor en :8000).
 
-Incluye pruebas de autenticación JWT: registro, login, aislamiento de la
-colección por usuario y rechazo de peticiones sin token.
+Incluye pruebas de autenticación JWT: registro, login, renovación con
+refresh token (incluidos tokens caducados), aislamiento de la colección por
+usuario y rechazo de peticiones sin token.
 """
+import base64
+import hashlib
+import hmac
 import json
+import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 BASE = "http://localhost:8000"
 fallos = []
+
+# Clave de firma (la misma que usa el backend si no se define en el entorno).
+CLAVE_SECRETA = os.getenv(
+    "LUDOTECA_SECRET_KEY", "ludoteca-clave-de-desarrollo-cambiala-en-produccion"
+)
 
 # Token global que se rellena al iniciar sesión (admin) y usan las peticiones.
 TOKEN = None
@@ -48,6 +59,21 @@ def comprobar(nombre, condicion, extra=""):
         fallos.append(nombre)
 
 
+def firmar_jwt(payload):
+    """Firma un JWT a mano (HS256) para fabricar tokens caducados de prueba."""
+
+    def b64(datos: bytes) -> str:
+        return base64.urlsafe_b64encode(datos).rstrip(b"=").decode()
+
+    cabecera = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    cuerpo = b64(json.dumps(payload).encode())
+    firma = b64(
+        hmac.new(CLAVE_SECRETA.encode(), f"{cabecera}.{cuerpo}".encode(),
+                 hashlib.sha256).digest()
+    )
+    return f"{cabecera}.{cuerpo}.{firma}"
+
+
 # ---- General --------------------------------------------------------------
 codigo, datos = req("GET", "/")
 comprobar("GET / responde 200", codigo == 200)
@@ -74,6 +100,50 @@ codigo, datos = req("POST", "/api/auth/login",
 comprobar("Login admin -> 200 y token", codigo == 200 and "access_token" in datos,
           f"codigo={codigo}")
 TOKEN = datos.get("access_token")
+REFRESH = datos.get("refresh_token")
+
+# ---- Refresco del JWT (renovar la sesión sin pasar la contraseña) ---------
+comprobar("Login devuelve refresh_token", bool(REFRESH),
+          f"refresh={'si' if REFRESH else 'no'}")
+
+codigo, refrescado = req("POST", "/api/auth/refresh", {"refresh_token": REFRESH},
+                         token=None)
+comprobar("Refresh -> 200 con par de tokens nuevo", codigo == 200
+          and "access_token" in refrescado and refrescado.get("refresh_token")
+          and refrescado.get("refresh_expira_en_segundos"),
+          f"codigo={codigo}")
+TOKEN = refrescado.get("access_token") or TOKEN
+REFRESH = refrescado.get("refresh_token") or REFRESH
+
+codigo, datos = req("GET", "/api/auth/yo")
+comprobar("El access renovado funciona", codigo == 200
+          and datos.get("email") == "admin@ludoteca.local", f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/auth/refresh", {"refresh_token": TOKEN},
+                    token=None)
+comprobar("Un access token no sirve como refresh -> 401", codigo == 401,
+          f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/auth/refresh", {"refresh_token": "token.basura.xxx"},
+                    token=None)
+comprobar("Refresh con token basura -> 401", codigo == 401, f"codigo={codigo}")
+
+codigo, datos = req("POST", "/api/auth/refresh", {}, token=None)
+comprobar("Refresh sin refresh_token -> 422", codigo == 422, f"codigo={codigo}")
+
+# Tokens caducados (firmados aquí a mano con la misma clave del backend).
+ahora = int(time.time())
+access_caducado = firmar_jwt({"sub": "1", "tipo": "access",
+                              "iat": ahora - 7200, "exp": ahora - 60})
+codigo, datos = req("GET", "/api/auth/yo", token=access_caducado)
+comprobar("Access caducado -> 401", codigo == 401, f"codigo={codigo}")
+
+refresh_caducado = firmar_jwt({"sub": "1", "tipo": "refresh",
+                               "iat": ahora - 7200, "exp": ahora - 60})
+codigo, datos = req("POST", "/api/auth/refresh", {"refresh_token": refresh_caducado},
+                    token=None)
+comprobar("Refresh caducado -> 401 (hay que volver a entrar)", codigo == 401,
+          f"codigo={codigo}")
 
 codigo, datos = req("GET", "/api/auth/yo")
 comprobar("GET /api/auth/yo devuelve el usuario", codigo == 200

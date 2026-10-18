@@ -8,6 +8,7 @@ const API = location.protocol === "file:" ? "http://localhost:8000" : "";
 const PAGINA_INICIO = location.protocol === "file:" ? "index.html" : "/panel/";
 
 const CLAVE_TOKEN = "ludoteca_token";
+const CLAVE_REFRESH = "ludoteca_refresh";
 const CLAVE_USUARIO = "ludoteca_usuario";
 
 /* ---------- Utilidades ---------- */
@@ -50,12 +51,37 @@ async function api(ruta, { method = "GET", body } = {}) {
 
 /* ---------- Sesión ---------- */
 function guardarSesion(respuesta) {
-  localStorage.setItem(CLAVE_TOKEN, respuesta.access_token);
+  if (respuesta.access_token) {
+    localStorage.setItem(CLAVE_TOKEN, respuesta.access_token);
+  }
+  if (respuesta.refresh_token) {
+    localStorage.setItem(CLAVE_REFRESH, respuesta.refresh_token);
+  }
   localStorage.setItem(CLAVE_USUARIO, JSON.stringify(respuesta.usuario));
 }
 
-function haySesion() {
-  return Boolean(localStorage.getItem(CLAVE_TOKEN));
+function cerrarSesionLocal() {
+  localStorage.removeItem(CLAVE_TOKEN);
+  localStorage.removeItem(CLAVE_REFRESH);
+  localStorage.removeItem(CLAVE_USUARIO);
+}
+
+/** Intenta renovar la sesión con el refresh token. True si consigue tokens. */
+async function renovarSesion() {
+  const refresh = localStorage.getItem(CLAVE_REFRESH);
+  if (!refresh) return false;
+  try {
+    const respuesta = await api("/api/auth/refresh", {
+      method: "POST",
+      body: { refresh_token: refresh },
+    });
+    guardarSesion(respuesta);
+    return true;
+  } catch (_) {
+    // Refresh caducado o revocado: se limpia y se queda en la pantalla de login.
+    cerrarSesionLocal();
+    return false;
+  }
 }
 
 /* ---------- Cambio de vista ---------- */
@@ -145,11 +171,20 @@ function conectarEventos() {
 }
 
 /* ---------- Arranque ---------- */
-document.addEventListener("DOMContentLoaded", () => {
-  // Si ya hay sesión, directo al panel.
-  if (haySesion()) {
+document.addEventListener("DOMContentLoaded", async () => {
+  // Si ya hay access token, directo al panel.
+  if (localStorage.getItem(CLAVE_TOKEN)) {
     location.replace(PAGINA_INICIO);
     return;
   }
+
+  // Solo queda el refresh token: se renueva la sesión y se entra al panel.
+  if (localStorage.getItem(CLAVE_REFRESH)) {
+    if (await renovarSesion()) {
+      location.replace(PAGINA_INICIO);
+      return;
+    }
+  }
+
   conectarEventos();
 });

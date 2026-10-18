@@ -8,6 +8,7 @@ const API = location.protocol === "file:" ? "http://localhost:8000" : "";
 const PAGINA_LOGIN = location.protocol === "file:" ? "login.html" : "/panel/login.html";
 
 const CLAVE_TOKEN = "ludoteca_token";
+const CLAVE_REFRESH = "ludoteca_refresh";
 const CLAVE_USUARIO = "ludoteca_usuario";
 
 /** Cabecera de autorización con el token JWT guardado (o {} si no hay). */
@@ -19,13 +20,15 @@ function cabeceraAuth() {
 /** Cierra la sesión y manda al login. */
 function cerrarSesion(mensaje) {
   localStorage.removeItem(CLAVE_TOKEN);
+  localStorage.removeItem(CLAVE_REFRESH);
   localStorage.removeItem(CLAVE_USUARIO);
   if (mensaje) sessionStorage.setItem("ludoteca_aviso", mensaje);
   location.replace(PAGINA_LOGIN);
 }
 
-// Si no hay sesión, fuera: directo al login.
-if (!localStorage.getItem(CLAVE_TOKEN)) {
+// Si no hay sesión, fuera: directo al login. Solo basta el refresh token,
+// porque con él se renueva el access caducado sin volver a entrar la clave.
+if (!localStorage.getItem(CLAVE_TOKEN) && !localStorage.getItem(CLAVE_REFRESH)) {
   location.replace(PAGINA_LOGIN);
 }
 
@@ -76,16 +79,87 @@ function debounce(fn, ms = 350) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-async function api(ruta, { method = "GET", body } = {}) {
-  const res = await fetch(API + ruta, {
+/* ---------- Sesión JWT: renovación automática (refresh token) ---------- */
+function datosToken(token) {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(payload));
+  } catch (_) {
+    return null;
+  }
+}
+
+/** True si el access token no existe o caduca en menos de `segundos`. */
+function accessPorCaducar(segundos = 90) {
+  const datos = datosToken(localStorage.getItem(CLAVE_TOKEN) || "");
+  if (!datos || !datos.exp) return true;
+  return datos.exp - Date.now() / 1000 <= segundos;
+}
+
+let renovacionPendiente = null;
+
+/**
+ * Cambia el refresh token por un par nuevo de tokens (rotación) sin pedir la
+ * contraseña. Solo hay una petición en vuelo aunque lleguen varias a la vez.
+ */
+function renovarSesion() {
+  if (!renovacionPendiente) {
+    renovacionPendiente = _renovarSesion().finally(() => {
+      renovacionPendiente = null;
+    });
+  }
+  return renovacionPendiente;
+}
+
+async function _renovarSesion() {
+  const refresh = localStorage.getItem(CLAVE_REFRESH);
+  if (!refresh) return false;
+  try {
+    const res = await fetch(API + "/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refresh }),
+    });
+    if (!res.ok) return false; // refresh caducado o revocado
+    const datos = await res.json();
+    localStorage.setItem(CLAVE_TOKEN, datos.access_token);
+    if (datos.refresh_token) localStorage.setItem(CLAVE_REFRESH, datos.refresh_token);
+    if (datos.usuario) localStorage.setItem(CLAVE_USUARIO, JSON.stringify(datos.usuario));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Petición cruda: no interpreta los 401 (eso lo hace api()). */
+function peticion(ruta, { method = "GET", body } = {}) {
+  return fetch(API + ruta, {
     method,
     headers: { "Content-Type": "application/json", ...cabeceraAuth() },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 401) {
-    cerrarSesion("Tu sesión ha caducado. Vuelve a entrar.");
-    throw new Error("Sesión caducada");
+}
+
+async function api(ruta, opciones = {}) {
+  // Renovación preventiva: si el access token está a punto de caducar, se
+  // cambia antes de que la petición llegue a fallar.
+  if (accessPorCaducar()) {
+    try { await renovarSesion(); } catch (_) { /* lo decidirá el 401 */ }
   }
+
+  let res = await peticion(ruta, opciones);
+
+  if (res.status === 401) {
+    // Puede haber caducado entre llamadas: se renueva y se reintenta una vez.
+    let renovado = false;
+    try { renovado = await renovarSesion(); } catch (_) { renovado = false; }
+    if (renovado) res = await peticion(ruta, opciones);
+    if (res.status === 401) {
+      cerrarSesion("Tu sesión ha caducado. Vuelve a entrar.");
+      throw new Error("Sesión caducada");
+    }
+  }
+
   if (!res.ok) {
     let mensaje = `Error ${res.status}`;
     try {

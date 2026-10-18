@@ -8,18 +8,22 @@ from app.models import ROL_ADMIN, Usuario
 from app.schemas import (
     PaginaUsuarios,
     RolActualizar,
+    TokenRefresco,
     TokenSalida,
     UsuarioCrear,
     UsuarioLogin,
     UsuarioSalida,
 )
 from app.seguridad import (
+    MINUTOS_REFRESH,
     MINUTOS_TOKEN,
+    crear_refresh_token,
     crear_token,
     hash_password,
     requiere_admin,
     requiere_gestor,
     usuario_actual,
+    usuario_del_refresh,
     verificar_password,
 )
 
@@ -134,10 +138,13 @@ def cambiar_rol(
 
 
 def _respuesta_token(usuario: Usuario) -> TokenSalida:
+    """Emite el par de tokens: access corto + refresh largo (rotación)."""
     return TokenSalida(
         access_token=crear_token(usuario.id),
+        refresh_token=crear_refresh_token(usuario.id),
         token_type="bearer",
         expira_en_segundos=MINUTOS_TOKEN * 60,
+        refresh_expira_en_segundos=MINUTOS_REFRESH * 60,
         usuario=UsuarioSalida.model_validate(usuario),
     )
 
@@ -189,6 +196,24 @@ def login(datos: UsuarioLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="La cuenta está desactivada",
         )
+    return _respuesta_token(usuario)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenSalida,
+    summary="Renovar la sesión con el refresh token (rotación)",
+)
+def refrescar_token(datos: TokenRefresco, db: Session = Depends(get_db)):
+    """Renueva los tokens sin volver a introducir la contraseña.
+
+    Recibe el ``refresh_token`` devuelto en el registro o login y responde con
+    un **nuevo par** de tokens (el refresh anterior se sustituye). El access
+    caducado deja de servir: con este endpoint el frontend sigue la sesión
+    viva sin interrumpir al usuario.
+    """
+    # Lanza 401 si el token es de otro tipo, está caducado o no es válido.
+    usuario = usuario_del_refresh(datos.refresh_token, db)
     return _respuesta_token(usuario)
 
 

@@ -45,7 +45,10 @@ app = FastAPI(
         "**Autenticación (JWT):**\n"
         "0. **Auth** — regístrate en `/api/auth/registro`, inicia sesión en "
         "`/api/auth/login` y usa el token con el botón **Authorize** "
-        "(esquema `Bearer`).\n\n"
+        "(esquema `Bearer`).\n"
+        "   Esa respuesta trae dos tokens: un **access token** corto y un "
+        "**refresh token** largo. Cuando el access caduca, renueva la sesión "
+        "sin contraseña en `POST /api/auth/refresh`.\n\n"
         "**Roles:** cada cuenta tiene un rol. `usuario` (por defecto) solo "
         "gestiona su propia colección; `gestor` además edita el catálogo "
         "(videojuegos, plataformas, géneros y desarrolladoras) y consulta las "
@@ -61,7 +64,7 @@ app = FastAPI(
         "Todos los endpoints (salvo auth y `/`) requieren el token JWT.\n"
         "CORS abierto: puedes llamarla desde cualquier página web (fetch/axios)."
     ),
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
     contact={"name": "API Colección de Videojuegos"},
 )
@@ -97,13 +100,14 @@ app.mount(
 def raiz():
     return {
         "mensaje": "API Colección de Videojuegos",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "documentacion_interactiva": "/docs",
         "openapi": "/openapi.json",
         "panel_web": "/panel",
         "autenticacion": {
             "registro": "POST /api/auth/registro",
             "login": "POST /api/auth/login",
+            "refrescar_token": "POST /api/auth/refresh",
             "usuario_actual": "GET /api/auth/yo",
         },
         "apartados": {
